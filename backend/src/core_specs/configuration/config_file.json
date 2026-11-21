@@ -3,7 +3,8 @@
         "general_data_path":"src/core_specs/data/general_data.json",
         "env_file_path":"../.env",
         "sessions_dir":"logs/sessions",
-        "frontend_dist_dir":"../frontend/dist"
+        "frontend_dist_dir":"../frontend/dist",
+        "frontend_mount_path":"/dashboard"
     },
 
     "logging":{

@@ -355,16 +355,49 @@ dreamguard/
   findings, 0 false rejections, p50 1.9 ms), 3 MJPEG frames received, run stopped cleanly.
 - Tests: 166 core/sim + 36 backend = 202 passing; ruff clean; backend pylint 9.80.
 
-### Phase 6 — Dashboard (free)
+### Phase 6 — Dashboard (free) — **FINISHED**
 
-- [ ] Vite + React + TypeScript scaffold in `frontend/`
-- [ ] Types generated from the backend OpenAPI schema
-- [ ] TanStack Query, typed WebSocket hook, Recharts, Tailwind (versions ≥ 7 days old)
-- [ ] Live page: camera, run controls, fault buttons, decision feed, risk chart, joint-limit bars, metrics
-- [ ] Sessions page: list + step-through replay
-- [ ] Profile page: read-only limits
-- [ ] Vite dev proxy; production build served by FastAPI
-- [ ] Vitest component tests
+- [x] Vite + React + TypeScript scaffold in `frontend/`
+- [x] Types generated from the backend OpenAPI schema
+- [x] TanStack Query, typed WebSocket hook, Recharts, Tailwind (versions ≥ 7 days old)
+- [x] Live page: camera, run controls, fault buttons, decision feed, risk chart, joint-limit bars, metrics
+- [x] Sessions page: list + step-through replay
+- [x] Profile page: read-only limits
+- [x] Vite dev proxy; production build served by FastAPI
+- [x] Vitest component tests
+
+**Phase 6 notes**
+- Exact versions, each the newest stable release published before 2026-11-14: React 19.1.10,
+  Vite 8.3.8, @vitejs/plugin-react 6.3.0, Tailwind 4.3.5, TanStack Query 5.107.1, Recharts 3.10.1,
+  Vitest 5.1.0, Testing Library, ESLint 9.39.5 + typescript-eslint 8.72.2, openapi-typescript 7.13.0.
+  Deviations for compatibility: TypeScript 5.9.3 (typescript-eslint and openapi-typescript do not
+  support 6/7), ESLint 9 (matches `@eslint/js` 9), jsdom 29.1.1 (jsdom 30/31 need Node ≥ 22.22;
+  this machine has 22.15), no router (react-router 8 needs a React newer than any eligible release;
+  three hash-based tabs replace it).
+- `backend/export_openapi.py` writes `frontend/openapi.json`; `npm run gen:api` generates
+  `src/api/schema.d.ts`; a backend test fails if the committed schema drifts from the API.
+- API layer: typed fetch client with readable errors, TanStack Query hooks (mutations refresh run,
+  metrics and sessions), `useEventStream` (pure reducer, reconnect with backoff, ignores late events
+  from previous runs, keeps the last 500 events).
+- Pages: **Live** (3 MJPEG cameras with retry, run controls with the paid Dream-1 source locked
+  while paid calls are disabled, halt banner + "Reviewed – resume run", 9 fault buttons enabled
+  only for a running scripted run, metrics cards, risk chart, decision feed with injected-fault
+  tags, decision detail with findings and executed / never-reached flag, joint targets vs limits);
+  **Sessions** (recorded sessions with metrics, slider / step-through replay, "Replay through the
+  guard"); **Safety profile** (read-only limits).
+- Backend serves the build at `/dashboard/` (`defaults.frontend_mount_path`); Vite builds with
+  base `/dashboard/` and proxies `/api` and `/ws` in development. Vendor code split into `react`
+  and `charts` chunks (no chunk-size warning).
+- Removed the unused WebSocket message models from `event_models.py` (they were not part of any
+  HTTP schema); the TypeScript `StreamMessage` type documents the messages.
+- CI: new `frontend` job (npm ci, typecheck, lint, test, build).
+- Verified live: dev server proxy (page, REST, WebSocket events during a run, camera stream) and
+  the backend-served build (assets, same-origin WebSocket). The IDE browser preview runs on its
+  own port, so the WebSocket origin check correctly rejects it; open http://localhost:5173 (dev) or
+  http://127.0.0.1:8000/dashboard/ (build) directly. The disconnected state now reads
+  "Live stream disconnected" instead of implying the backend is down.
+- Tests: 24 frontend (Vitest) + 166 core/sim + 38 backend = 228 passing; tsc, ESLint and ruff clean;
+  backend pylint 9.80; production build without warnings.
 
 ### Phase 7 — Real Dream-1 runs (PAID — each attempt requires approval)
 

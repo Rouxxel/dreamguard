@@ -21,6 +21,14 @@ cd backend; ..\.venv\Scripts\python -m pylint src main.py --fail-under=9.5
 cd backend; ..\.venv\Scripts\python main.py             # http://127.0.0.1:8000/docs
 ```
 
+## Frontend (Node 22)
+```powershell
+cd frontend; npm install
+npm run typecheck; npm run lint; npm test; npm run build   # build is served at /dashboard/
+npm run dev                                                # http://localhost:5173, backend on :8000
+cd backend; ..\.venv\Scripts\python export_openapi.py; cd ../frontend; npm run gen:api   # after API changes
+```
+
 ## Rules
 - **No paid Dream API calls** (`client.get_action()`, `python -m dream.check`, `get_models()`) without
   explicit user approval for that specific run. `DreamClient()`, `policy()`, `set_observation()` are local.

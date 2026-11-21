@@ -141,6 +141,19 @@ cd backend
 python main.py        # http://127.0.0.1:8000/docs
 ```
 
+## Dashboard
+
+`frontend/` is a React + Vite + TypeScript dashboard: live cameras, run controls, fault injection,
+metrics, risk chart, decision feed with explanations, joint targets vs limits, session replay and
+the safety profile. See [frontend/README.md](frontend/README.md).
+
+```powershell
+cd frontend
+npm install
+npm run dev     # http://localhost:5173 with the backend running
+npm run build   # then open http://127.0.0.1:8000/dashboard/ (served by the backend)
+```
+
 ## Configure real limits before connecting a simulator
 
 Safety limits are a `SafetyConfig`. The defaults (joint limits of `[-pi, pi]`) are placeholders.

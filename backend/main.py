@@ -14,11 +14,13 @@ It sets up routers, custom logger, rate limiter, CORS and loads environment vari
 #Native imports
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 #Third-party imports
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 
@@ -120,6 +122,17 @@ app.include_router(get_metrics_router)
 #Streams
 app.include_router(events_socket_router)
 app.include_router(camera_stream_router)
+
+"""Dashboard-----------------------------------------------------------"""
+#Serve the production dashboard build (npm run build in frontend/) when it exists
+DASHBOARD_DIR = Path(resolve_backend_path(config_loader["defaults"]["frontend_dist_dir"]))
+if DASHBOARD_DIR.is_dir():
+    app.mount(
+        config_loader["defaults"]["frontend_mount_path"],
+        StaticFiles(directory=DASHBOARD_DIR, html=True),
+        name="dashboard",
+    )
+    log_handler.info(f"Dashboard served at {config_loader['defaults']['frontend_mount_path']}/")
 
 """Start server-----------------------------------------------------------"""
 if __name__ == "__main__":

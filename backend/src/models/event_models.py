@@ -11,13 +11,12 @@ Pydantic models for recorded and streamed safety events.
 """
 
 #Native imports
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Optional
 
 #Third-party imports
 from pydantic import BaseModel, Field
 
 #Other files imports
-from src.models.run_models import RunResponse
 from src.models.safety_models import SafetyReportResponse
 
 
@@ -39,16 +38,3 @@ class SafetyEventResponse(BaseModel):
     )
     current_joints: Optional[Dict[str, Any]] = None
 
-
-class EventMessage(BaseModel):
-    """WebSocket message carrying a safety event."""
-
-    type: Literal["event"]
-    event: SafetyEventResponse
-
-
-class RunMessage(BaseModel):
-    """WebSocket message carrying the current run status."""
-
-    type: Literal["run"]
-    run: RunResponse
