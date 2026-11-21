@@ -99,3 +99,19 @@ def test_read_session_reports_malformed_line(tmp_path):
 
 def test_list_sessions_of_missing_directory_is_empty(tmp_path):
     assert list_sessions(tmp_path / "missing") == []
+
+
+def test_events_with_non_finite_values_are_still_recorded(tmp_path):
+    bus = EventBus()
+    recorder = JsonlSessionRecorder(tmp_path)
+    bus.subscribe(recorder)
+    controller = GuardedController(NullRobot(), SafetyGuard(), bus=bus, session_id="nan-run")
+    bad = [[float("nan"), 0, 0, 0, 0, 0, 0.5]]
+    worse = [[float("inf"), 0, 0, 0, 0, 0, 0.5]]
+    current = {"right": HOME, "left": HOME}
+    controller.submit({"q_r_chunk": bad, "q_l_chunk": worse}, current_joints=current)
+
+    [event] = read_session(recorder.path_for("nan-run"))
+    assert event["report"]["decision"] == "BLOCK"
+    assert event["action"]["q_r_chunk"][0][0] == "NaN"
+    assert event["action"]["q_l_chunk"][0][0] == "Infinity"

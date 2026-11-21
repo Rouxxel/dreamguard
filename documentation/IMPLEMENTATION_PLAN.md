@@ -256,13 +256,50 @@ dreamguard/
   paid call. README integration section rewritten around `GuardedController` and session recording.
 - Tests: 130 core + 4 backend = 134 passing; ruff clean; backend pylint 9.74.
 
-### Phase 4 — MuJoCo bimanual simulator (free)
+### Phase 4 — MuJoCo bimanual simulator (free) — **FINISHED**
 
-- [ ] Vendor `i2rt_yam` (MIT) and build `scene_bimanual.xml` (2 arms, overhead + 2 wrist cameras, table, objects)
-- [ ] `SimRobot`: `joints()`, `gripper()`, `jpeg(camera)` (320×176, q85), `play(chunk)` at `action_hz`
-- [ ] Gripper mapping 0…1 → 0…0.041 m
-- [ ] `mujoco_fk`: `grasp_site` in world frame (workspace + separation checks)
-- [ ] `FakeDreamClient` (scripted chunks + fault injection) and replay source
+- [x] Vendor `i2rt_yam` (MIT) and build `scene_bimanual.xml` (2 arms, overhead + 2 wrist cameras, table, objects)
+- [x] `SimRobot`: `joints()`, `gripper()`, `jpeg(camera)` (320×176, q85), `play(chunk)` at `action_hz`
+- [x] Gripper mapping 0…1 → 0…0.041 m
+- [x] `mujoco_fk`: `grasp_site` in world frame (workspace + separation checks)
+- [x] `FakeDreamClient` (scripted chunks + fault injection) and replay source
+
+**Phase 4 notes**
+- Dependencies (optional extra `sim`): `mujoco` 4.0.1 (released 2026-11-11) and `pillow` 13.0.0
+  (2026-10-16). Nothing else to download and no extra key; rendering uses the machine's OpenGL
+  (verified offscreen on this Windows machine; CI installs EGL and sets `MUJOCO_GL=egl` on Linux).
+- Vendored Menagerie `i2rt_yam` unmodified at commit `b0655057` (5.3 MB: `yam.xml`, 17 STL meshes,
+  MIT `LICENSE`) in `src/dreamguard/sim/assets/i2rt_yam/` with `SOURCE.md`; shipped as package data
+  (verified in the built wheel).
+- The scene is built programmatically with `MjSpec` (`sim/scene.py`) instead of a hand-written
+  `scene_bimanual.xml`: the model is attached twice (`right_` / `left_`, bases at y = ∓0.30 m on a
+  0.75 m table), plus a table, three free objects, an overhead camera behind/above the arms and a
+  wrist camera on each `link_6` (roles `overhead`, `wrist_l`, `wrist_r`). Camera views were checked
+  visually.
+- `SimRobot` (`sim/robot.py`): Dream-1 `observation(prompt)` (`state.*` float32) and `frames()`
+  (`video.*` base64 JPEG); `play()` executes the first `execution_horizon` (30) rows at
+  `action_hz` (20 Hz, 25 physics substeps of 2 ms), optional real-time pacing, `interrupt()`,
+  `hold()`. Physics/rendering are lock-protected; renderers are per thread. Starts at the
+  Menagerie home pose (0, 1.047, 1.047, 0, 0, 0) with grippers open.
+- Gripper: command 0..1 → finger actuator 0..0.041 m; reading is the finger position over its
+  0.0375 m travel, clipped to 0..1.
+- `SimKinematics` (`sim/kinematics.py`): `grasp_site` world position with its own `MjData`
+  (never disturbs a running simulation).
+- `yam_sim` profile now enforces the workspace (table area, x −0.15..0.85 m, y −0.75..0.75 m,
+  z 0.76..1.6 m, i.e. 1 cm above the table) and 0.10 m gripper separation, with
+  `require_workspace_check: true` (blocks everything without forward kinematics, fail closed).
+- `sources/fake.py`: `FakeDreamClient` mirrors the SDK inference surface, generates 50-row chunks
+  from the measured state toward scripted waypoints at 1 rad/s, and injects 9 one-shot faults.
+  `sources/replay.py`: `ReplayDreamClient` replays session/fixture JSONL files.
+  `sim/loop.py`: `run_loop()`; `sim/demo.py`: `python -m dreamguard.sim.demo`.
+- Verified: scripted runs are approved with zero false rejections; each of the 9 faults is blocked
+  by exactly its intended check and never reaches the robot.
+- Defect found and fixed in Phase 3 code: the JSONL recorder dropped events whose actions contained
+  NaN/Infinity (strict JSON), so the NaN fault was blocked but not logged. Non-finite values are
+  now recorded as `"NaN"` / `"Infinity"` / `"-Infinity"` (regression test added).
+- Demo output caps findings at 5 per action (long violations produce one finding per row).
+- `MUJOCO_LOG.TXT` (MuJoCo warning log) added to `.gitignore`.
+- Tests: 161 core/sim + 4 backend = 165 passing; ruff clean; backend pylint 9.74.
 
 ### Phase 5 — Backend API (free)
 

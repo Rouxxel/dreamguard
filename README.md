@@ -103,6 +103,31 @@ Do not call `robot.play(client.get_action())` directly once DreamGuard is in the
 
 The exact camera, observation and simulator objects depend on the Playground robot configuration. Do not guess these fields: copy the actual observation mapping and robot loop from the Playground's current integration example. The `integrations/dream_client_loop_skeleton.py` file shows where the guard belongs without inventing camera or robot APIs.
 
+## Offline MuJoCo simulator
+
+DreamGuard ships a local bimanual YAM simulator (two MuJoCo Menagerie i2rt YAM arms on a table,
+overhead + two wrist cameras) so the whole loop runs without a robot, a network connection or Dream
+credits:
+
+```powershell
+python -m pip install -e ".[sim]"
+python -m dreamguard.sim.demo     # scripted motion, then every fault; all decisions logged
+```
+
+| Component | Purpose |
+|---|---|
+| `dreamguard.sim.SimRobot` | Robot API: `joints(arm)`, `gripper(arm)`, `observation(prompt)`, `frames()` (base64 JPEG, 320x176, quality 85), `play(action)` at `action_hz` (first `execution_horizon` rows), `interrupt()` |
+| `dreamguard.sim.SimKinematics` | Forward kinematics of each `grasp_site` in the world frame, for workspace and separation checks |
+| `dreamguard.sources.FakeDreamClient` | Offline stand-in for `dream.DreamClient` with scripted chunks and `inject(fault)` |
+| `dreamguard.sources.ReplayDreamClient` | Replays a recorded session or fixture file through the same interface |
+| `dreamguard.sim.run_loop` | Observe -> `get_action()` -> `GuardedController.submit()` loop |
+
+Injectable faults (each blocked by exactly one check): `joint_limit`, `big_step`, `velocity`,
+`nan`, `gripper`, `missing_arm`, `mismatched_lengths`, `workspace`, `separation`.
+
+The `yam_sim` profile requires forward kinematics (workspace and separation checks); construct the
+guard with `SafetyGuard(load_builtin_profile("yam_sim"), forward_kinematics=SimKinematics())`.
+
 ## Configure real limits before connecting a simulator
 
 Safety limits are a `SafetyConfig`. The defaults (joint limits of `[-pi, pi]`) are placeholders.

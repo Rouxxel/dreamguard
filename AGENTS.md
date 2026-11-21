@@ -9,13 +9,14 @@
 ## Setup (Windows, Python 3.12)
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python -m pip install -e ".[dev]" -r backend/requirements.txt
+.\.venv\Scripts\python -m pip install -e ".[dev,sim]" -r backend/requirements.txt
 ```
 
 ## Verify
 ```powershell
 .\.venv\Scripts\python -m ruff check .                  # core library (backend excluded)
-.\.venv\Scripts\python -m pytest -q                     # core + backend tests
+.\.venv\Scripts\python -m pytest -q                     # core + sim + backend tests
+.\.venv\Scripts\python -m dreamguard.sim.demo            # offline simulator run with every fault
 cd backend; ..\.venv\Scripts\python -m pylint src main.py --fail-under=9.5
 cd backend; ..\.venv\Scripts\python main.py             # http://127.0.0.1:8000/docs
 ```

@@ -17,14 +17,17 @@ CURRENT_JOINTS = {
 }
 
 
-def format_report(index: int, title: str, report: SafetyReport) -> str:
+def format_report(index: int, title: str, report: SafetyReport, max_findings: int = 5) -> str:
     timing = f"risk {report.risk_score}, {report.latency_ms:.2f} ms, {report.checked_rows} rows"
     lines = [f"Action {index}: {title}", f"Decision: {report.decision.value} ({timing})"]
     if not report.findings:
         lines.append("Findings: No safety violations")
     else:
         lines.append("Findings:")
-        lines += [f"- [{f.severity.value}] {f.message}" for f in report.findings]
+        shown = report.findings[:max_findings]
+        lines += [f"- [{f.severity.value}] {f.message}" for f in shown]
+        if len(report.findings) > len(shown):
+            lines.append(f"- ... and {len(report.findings) - len(shown)} more findings")
     return "\n".join(lines)
 
 

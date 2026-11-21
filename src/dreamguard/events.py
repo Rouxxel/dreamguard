@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import threading
 import uuid
@@ -33,13 +34,16 @@ def validate_session_id(session_id: str) -> str:
 
 
 def _plain(value: Any) -> Any:
-    """Convert numpy arrays/scalars and tuples to JSON-friendly Python values."""
+    """JSON-safe copy: numpy values become Python values, and non-finite floats (which strict
+    JSON cannot hold) become the strings "NaN", "Infinity" and "-Infinity"."""
     if hasattr(value, "tolist"):
-        return value.tolist()
+        value = value.tolist()
     if isinstance(value, Mapping):
         return {str(k): _plain(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_plain(v) for v in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
     return value
 
 
@@ -67,7 +71,7 @@ class SafetyEvent:
             "executed": self.executed,
             "halted": self.halted,
             "error": self.error,
-            "report": self.report.as_dict(),
+            "report": _plain(self.report.as_dict()),
             "action": {
                 key: _plain(self.action[key])
                 for key in ("q_r_chunk", "q_l_chunk")

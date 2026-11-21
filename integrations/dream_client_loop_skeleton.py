@@ -14,6 +14,7 @@ load_dotenv()
 
 from dreamguard import SafetyGuard, load_builtin_profile
 from dreamguard.adapter import guarded_get_action
+from dreamguard.sim import SimKinematics
 
 POLICY_CONFIG = {
     "timeout_ms": 15000,
@@ -42,7 +43,8 @@ POLICY_CONFIG = {
 
 
 def run_one_policy_step(frames: dict, observation: dict) -> dict:
-    guard = SafetyGuard(load_builtin_profile("yam_sim"))
+    # yam_sim enforces workspace and gripper separation, which need forward kinematics.
+    guard = SafetyGuard(load_builtin_profile("yam_sim"), forward_kinematics=SimKinematics())
     with dream.DreamClient() as client:
         client.policy(POLICY_CONFIG)
         client.set_observation(frames, observation)

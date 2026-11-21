@@ -256,3 +256,6 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# MuJoCo warning log
+MUJOCO_LOG.TXT
