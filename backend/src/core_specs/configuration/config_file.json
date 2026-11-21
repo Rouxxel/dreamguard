@@ -41,7 +41,8 @@
         "allow_paid_calls_env": "DREAMGUARD_ALLOW_PAID",
         "max_paid_calls_per_run": 0,
         "checkpoint": "dreamlabs/dream-1-beta",
-        "timeout_ms": 15000
+        "timeout_ms": 15000,
+        "fixtures_dir": "../fixtures/dream1"
     },
 
     "endpoints": {

@@ -31,6 +31,7 @@ export function RunControls({ catalog, run }: { catalog: Catalog | undefined; ru
         {run && run.run_id && (
           <span className="text-xs text-slate-400">
             {run.chunks} chunks · {run.rows_played} rows executed
+            {run.source === "dream1" && ` · ${run.paid_calls} paid calls`}
           </span>
         )}
       </div>

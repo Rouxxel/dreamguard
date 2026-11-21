@@ -30,16 +30,16 @@ from dreamguard.events import EventBus, JsonlSessionRecorder, SafetyEvent, new_s
 from dreamguard.metrics import summarize_events
 from dreamguard.sim import SimKinematics, SimRobot, build_model
 from dreamguard.sources import FAULTS, FakeDreamClient, ReplayDreamClient, ReplayExhaustedError
+from dreamguard.sources.dream1 import Dream1Source, PaidCallBudgetExhausted, policy_config
 
 #Other files imports
-from src.core_specs.configuration.config_loader import config_loader
+from src.core_specs.configuration.config_loader import config_loader, resolve_backend_path
 from src.resources.camera_service import CameraService
 from src.resources.event_broadcaster import broadcaster
 from src.resources.service_errors import (
     ConflictError,
     NotAvailableError,
     NotFoundError,
-    NotImplementedYetError,
     PaidCallsDisabledError,
     ServiceError,
 )
@@ -171,10 +171,37 @@ class RunManager:  # pylint: disable=too-many-instance-attributes
                     "Paid Dream-1 calls are disabled. They require dream.allow_paid_calls=true in "
                     "config_file.json and DREAMGUARD_ALLOW_PAID=1 in .env, approved per run."
                 )
-            raise NotImplementedYetError("The live Dream-1 source is implemented in Phase 7")
+            return self._make_dream1_client()
         else:
             raise ServiceError(f"Unknown source {source!r}; expected one of {', '.join(SOURCES)}")
-        client.policy({"checkpoint": f"dreamguard-{source}"})
+        if source != "dream1":
+            client.policy({"checkpoint": f"dreamguard-{source}"})
+        return client
+
+    def _make_dream1_client(self) -> Dream1Source:
+        """Live Dream-1 client with a hard budget of paid calls; every reply is recorded."""
+        dream_cfg = config_loader["dream"]
+        budget = dream_cfg["max_paid_calls_per_run"]
+        if not isinstance(budget, int) or budget < 1:
+            raise PaidCallsDisabledError(
+                "dream.max_paid_calls_per_run must be at least 1 to allow a paid run"
+            )
+        client = Dream1Source(
+            max_calls=budget,
+            fixtures_dir=resolve_backend_path(dream_cfg["fixtures_dir"]),
+            config=policy_config(
+                checkpoint=dream_cfg["checkpoint"],
+                timeout_ms=dream_cfg["timeout_ms"],
+                action_hz=self.profile.action_hz,
+                execution_horizon=self.robot.execution_horizon,
+            ),
+        )
+        try:
+            #Opens the policy: one GET /v1/models request (model listing), no inference
+            client.policy()
+        except Exception as exc:
+            client.close()
+            raise ServiceError(f"Dream-1 policy could not be opened: {exc}") from exc
         return client
 
     def start_run(
@@ -225,8 +252,11 @@ class RunManager:  # pylint: disable=too-many-instance-attributes
                 client.set_observation(self.robot.frames() if needs_frames else {}, observation)
                 try:
                     action = client.get_action()
-                except ReplayExhaustedError:
+                except (ReplayExhaustedError, PaidCallBudgetExhausted):
                     break
+                finally:
+                    if isinstance(client, Dream1Source):
+                        self._update(paid_calls=client.calls)
                 faults = list(getattr(client, "last_faults", ()))
                 metadata = {"injected_faults": faults} if faults else None
                 try:
@@ -241,6 +271,7 @@ class RunManager:  # pylint: disable=too-many-instance-attributes
             log_handler.error(f"Run {run_id} failed: {error}")
         finally:
             self.robot.close_thread_renderer()
+            client.close()
         self._update(state=final_state, finished_at=_now(), error=error)
         log_handler.info(f"Run {run_id} finished ({final_state})")
 

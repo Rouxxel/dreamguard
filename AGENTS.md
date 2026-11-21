@@ -29,6 +29,14 @@ npm run dev                                                # http://localhost:51
 cd backend; ..\.venv\Scripts\python export_openapi.py; cd ../frontend; npm run gen:api   # after API changes
 ```
 
+## Live Dream-1 (Phase 7)
+```powershell
+.\.venv\Scripts\python scripts\dream1_attempt.py --preflight      # offline, free
+# Paid: only with explicit user approval for that attempt
+#   $env:DREAMGUARD_ALLOW_PAID="1"; python scripts\dream1_attempt.py --max-calls 1 --i-approve-paid-calls
+```
+`policy()` sends one `GET /v1/models`; `get_action()` is paid; always `_record: False`.
+
 ## Rules
 - **No paid Dream API calls** (`client.get_action()`, `python -m dream.check`, `get_models()`) without
   explicit user approval for that specific run. `DreamClient()`, `policy()`, `set_observation()` are local.

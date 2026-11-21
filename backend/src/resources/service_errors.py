@@ -33,6 +33,3 @@ class PaidCallsDisabledError(ServiceError):
 class NotAvailableError(ServiceError):
     status_code = 503
 
-
-class NotImplementedYetError(ServiceError):
-    status_code = 501

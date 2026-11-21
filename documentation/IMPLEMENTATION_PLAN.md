@@ -399,13 +399,45 @@ dreamguard/
 - Tests: 24 frontend (Vitest) + 166 core/sim + 38 backend = 228 passing; tsc, ESLint and ruff clean;
   backend pylint 9.80; production build without warnings.
 
-### Phase 7 — Real Dream-1 runs (PAID — each attempt requires approval)
+### Phase 7 — Real Dream-1 runs (PAID — each attempt requires approval) — **IN PROGRESS**
 
-- [ ] Free preflight (`policy` + `set_observation`, no `get_action`)
+- [x] Free preflight (`policy` + `set_observation`, no `get_action`)
 - [ ] Attempt 1: single `get_action`, recorded; verify joint conventions, adjust profile
 - [ ] Attempt 2: short run (~10 chunks), recorded; measure false rejections, tune limits
 - [ ] Attempt 3: final demo recording
 - Fallback if credits are unavailable: demo on `fake` + `replay` sources
+
+**Phase 7 notes (free part, done)**
+- SDK network behaviour verified by reading `dreamlabs-client` 1.1.7 and by running with all
+  outbound sockets blocked:
+  - `DreamClient()` and `set_observation()` are local.
+  - `policy()` makes **one `GET /v1/models` request** (model listing, not inference) whenever the
+    config has `ik`, which the YAM `dream-1-beta` config needs. Its docstring says nothing is sent;
+    the socket block proved otherwise. With `embodiment` passed explicitly no other lookup runs.
+  - `get_action()` is the paid inference call.
+  - By default the SDK **streams every camera tick (state + JPEG frames) to Dream Labs' live
+    service**; DreamGuard always sets `_record: False` (the SDK's documented setting for
+    simulated episodes) and refuses configs without it.
+- `dreamguard/sources/dream1.py`: `Dream1Source` (hard `max_calls` budget counted before sending;
+  failed or refused calls count too), `policy_config()` (YAM station config, `_record: False`),
+  reply recording to `fixtures/dream1/<session>.jsonl` (action, measured state, timing, errors;
+  never frames), replayable with `ReplayDreamClient.from_file`; `check_inputs()` and
+  `preflight()`: Level 1 fully offline, Level 2 (`allow_model_lookup`) adds the `GET /v1/models`.
+- Level 1 preflight passed with sockets blocked: 3 JPEG frames 320×176 (`video.overhead`,
+  `video.wrist_l`, `video.wrist_r`), `state.*_arm` float32 [6], `state.*_gripper` float32 [1],
+  recording off, zero network attempts.
+- Backend `dream1` source: needs `dream.allow_paid_calls`, `DREAMGUARD_ALLOW_PAID=1` and
+  `dream.max_paid_calls_per_run ≥ 1` (default 0); the run stops at the budget; `paid_calls` is in the
+  run status and shown on the dashboard; replies recorded to `dream.fixtures_dir`.
+- `scripts/dream1_attempt.py`: `--preflight [--allow-model-lookup]`; paid attempts need
+  `--i-approve-paid-calls`, `DREAMGUARD_ALLOW_PAID=1` and `--max-calls N`; prints each decision, the
+  first-row offset from the measured joints (joint-convention check) and the round-trip timing.
+  Refusal paths verified.
+- Test suites now fail any connection to a non-local address (`tests/conftest.py`,
+  `backend/tests/conftest.py`); all live-source tests use a fake SDK client.
+- Tests: 218 Python (core, sim, backend) + 24 frontend passing; ruff, ESLint, tsc clean.
+
+**Waiting for approval:** Level 2 preflight (one `GET /v1/models`) and Attempt 1 (one `get_action`).
 
 ### Phase 8 — Documentation and submission
 

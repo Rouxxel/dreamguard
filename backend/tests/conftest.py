@@ -1,3 +1,4 @@
+import socket
 import sys
 import time
 from pathlib import Path
@@ -18,6 +19,20 @@ from src.utils.limiter import limiter  # noqa: E402
 config_loader["simulation"]["realtime"] = False
 config_loader["dream"]["allow_paid_calls"] = False
 limiter.enabled = False
+
+
+@pytest.fixture(autouse=True)
+def no_external_network(monkeypatch):
+    """Backend tests must never reach Dream Labs (or anything else off this machine)."""
+    original = socket.socket.connect
+
+    def guarded(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if host not in {"127.0.0.1", "::1", "localhost"}:
+            raise AssertionError(f"Test attempted an external network connection to {address}")
+        return original(self, address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)
 
 
 @pytest.fixture()
