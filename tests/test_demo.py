@@ -8,7 +8,8 @@ def test_demo_output_has_real_newlines_and_blocks_only_the_unsafe_arm(capsys):
     output = capsys.readouterr().out
 
     assert LITERAL_BACKSLASH_N not in output
-    assert "'approved': True" in output
+    assert "Decision: APPROVE" in output
+    assert "Decision: BLOCK" in output
     assert "right row 1: joint step" in output
     assert "left row 1" not in output
 

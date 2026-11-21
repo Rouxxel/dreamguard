@@ -103,9 +103,9 @@ Enforcement:
 dreamguard/
 ├── src/dreamguard/              # core library (no web dependencies)
 │   ├── guard.py checks.py report.py config.py adapter.py events.py
+│   ├── profiles/   yam_sim.json (safety profile, shipped as package data)
 │   ├── sim/        scene_bimanual.xml, vendored i2rt_yam (MIT), robot.py, kinematics.py
 │   └── sources/    fake.py, replay.py, dream1.py (paid-call guarded)
-├── profiles/yam_sim.json        # safety profile
 ├── backend/                     # FastAPI service
 │   ├── main.py  requirements.txt  DOCKERFILE  docker-compose.yml  start.bat  start.sh
 │   ├── tests/
@@ -192,14 +192,41 @@ dreamguard/
 - Tests: 36 core guard/demo tests (was 7) + 4 backend = 40 passing; ruff clean.
   The original D1–D4 reproductions now behave correctly (D1, D2, D4 blocked; D3 approved).
 
-### Phase 2 — Safety engine restructure (free)
+### Phase 2 — Safety engine restructure (free) — **FINISHED**
 
-- [ ] `report.py`: `Decision` enum, structured `Finding`, `SafetyReport` with latency
-- [ ] `checks.py`: one pure function per rule
-- [ ] `config.py`: `SafetyConfig` + JSON profile loader; `profiles/yam_sim.json` with real YAM limits
-- [ ] Velocity limit (`max_joint_velocity_rad_s × 1/action_hz`)
-- [ ] Severity-weighted risk score + near-limit warnings
-- [ ] Public API (`SafetyGuard.inspect` / `approve`) unchanged
+- [x] `report.py`: `Decision` enum, structured `Finding`, `SafetyReport` with latency
+- [x] `checks.py`: one pure function per rule
+- [x] `config.py`: `SafetyConfig` + JSON profile loader; `profiles/yam_sim.json` with real YAM limits
+- [x] Velocity limit (`max_joint_velocity_rad_s × 1/action_hz`)
+- [x] Severity-weighted risk score + near-limit warnings
+- [x] Public API (`SafetyGuard.inspect` / `approve`) unchanged
+
+**Phase 2 notes**
+- Modules: `report.py` (`Decision`, `Severity`, `Finding`, `SafetyReport`, `compute_risk`,
+  `UnsafeActionError`), `config.py` (`SafetyConfig`, `load_profile`, `load_builtin_profile`),
+  `checks.py` (parsing + one function per rule), `guard.py` (orchestrator). Existing imports from
+  `dreamguard.guard` keep working.
+- One intended API change: `SafetyReport.findings` holds `Finding` objects instead of strings
+  (`report.messages` gives the strings). `as_dict()` now includes `decision`, structured findings
+  and `latency_ms`. `approved` is kept as a property.
+- `SafetyConfig` validates itself on construction (fail closed): non-finite values, inverted
+  ranges, wrong lengths, invalid row bounds or booleans raise `ValueError`. Profiles reject unknown
+  keys (typo protection); `name` / `description` / `source` / `notes` are allowed metadata.
+- New fields: `gripper_range`, `max_joint_velocity_rad_s` (per joint, `None` = off), `action_hz`,
+  `near_limit_margin_rad` (`0` = off). Defaults keep previous behaviour.
+- The profile lives at `src/dreamguard/profiles/yam_sim.json` (package data, verified in the built
+  wheel) instead of a top-level `profiles/` folder, so it ships with the library.
+- `yam_sim`: Menagerie YAM joint ranges, `action_hz` 20, step 0.35 rad, velocity 3.0 rad/s per joint,
+  near-limit margin 0.05 rad. Step/velocity values are development guardrails to tune in Phase 7;
+  workspace/separation stay off until simulator FK exists (Phase 4).
+- Velocity is checked between consecutive rows only; row 0 vs the measured state is covered by the
+  step check (it includes network latency, not a commanded velocity).
+- Risk score: violations score their check weight (70–100) + 2 per extra violation (cap 100);
+  approved actions score their strongest near-limit warning (0–50).
+- Demo prints the PRD §11 format (decision, risk, latency, findings).
+- Tests: 92 core + 4 backend = 96 passing; ruff clean.
+- Local note: the sandbox blocks pytest's default temp dir, so local runs used
+  `--basetemp=.pytest_cache/tmp`; CI is unaffected.
 
 ### Phase 3 — Enforced interception and events (free)
 

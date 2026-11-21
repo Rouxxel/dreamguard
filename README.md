@@ -14,7 +14,9 @@ For each `q_r_chunk` and `q_l_chunk` action returned by Dream-1, it checks:
 - all values are finite numbers;
 - configured joint position limits are respected;
 - configured per-row joint step limits are respected;
-- gripper targets remain in `[0, 1]`;
+- optional per-joint velocity limits (rad/s at the configured `action_hz`) are respected;
+- gripper targets remain in the configured range (default `[0, 1]`);
+- targets close to a joint limit raise a non-blocking near-limit warning;
 - optional forward-kinematics workspace and end-effector separation checks are applied when you provide robot-specific kinematics.
 
 **Important limitations:** the starter does not know your simulator's calibrated joint limits, link geometry, collision meshes, or emergency-stop interface. Defaults are development guardrails, not certified safety limits. The optional distance check only compares end-effector points, not full robot links. Do not connect this starter directly to physical hardware.
@@ -93,9 +95,40 @@ The exact camera, observation and simulator objects depend on the Playground rob
 
 ## Configure real limits before connecting a simulator
 
-Edit `SafetyConfig` in `src/dreamguard/guard.py` using the simulator's documented joint ranges and measured action rate. The default joint limits of `[-pi, pi]` are placeholders and may not match your robot.
+Safety limits are a `SafetyConfig`. The defaults (joint limits of `[-pi, pi]`) are placeholders.
+Use a JSON safety profile instead:
 
-For workspace / separation checks, supply a tested forward-kinematics function returning each end-effector position in metres. Set `require_workspace_check=True` if the workspace must be enforced; the guard then fails closed if no FK callback is supplied.
+```python
+from dreamguard import SafetyGuard, load_builtin_profile, load_profile
+
+guard = SafetyGuard(load_builtin_profile("yam_sim"))   # src/dreamguard/profiles/yam_sim.json
+guard = SafetyGuard(load_profile("my_robot.json"))     # your own profile
+```
+
+`yam_sim` carries the joint ranges of the i2rt YAM model from MuJoCo Menagerie. Its step and
+velocity limits are development guardrails to be tuned against recorded Dream-1 chunks. Profile
+keys are the `SafetyConfig` field names (plus optional `name`, `description`, `source`, `notes`);
+unknown keys and invalid values (non-finite, inverted ranges, wrong lengths) are rejected when the
+configuration is built, so a guard never runs with an unusable configuration.
+
+For workspace / separation checks, supply a tested forward-kinematics function returning each
+end-effector position in metres. Set `require_workspace_check=True` if the workspace must be
+enforced; the guard then fails closed if no FK callback is supplied.
+
+## Safety reports
+
+`SafetyGuard.inspect()` returns a `SafetyReport`:
+
+- `decision`: `Decision.APPROVE` or `Decision.BLOCK` (`MODIFY` is reserved; corrections are not
+  enabled yet);
+- `findings`: structured `Finding` objects (`check`, `severity`, `message`, `arm`, `row`, `joint`,
+  `value`, `limit`). `violation` findings block; `warning` findings (near-limit) do not;
+- `risk_score`: a developer-facing heuristic in `[0, 100]`, not a probability of harm. Blocked
+  actions score the weight of their most serious check plus 2 per extra violation (at least 70);
+  approved actions score their strongest near-limit warning (at most 50);
+- `latency_ms`: validation time; `as_dict()` gives a JSON-serializable form.
+
+`SafetyGuard.approve()` returns the validated action or raises `UnsafeActionError`.
 
 ## Team workflow
 

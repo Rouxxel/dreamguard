@@ -18,7 +18,7 @@ def inspect(act, guard=None, current=CURRENT):
 
 
 def findings_text(report):
-    return " ".join(report.findings)
+    return " ".join(report.messages)
 
 
 # --- Original starter behaviour ------------------------------------------------

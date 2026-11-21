@@ -1,84 +1,36 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
-from math import isfinite, sqrt
-from numbers import Real
+from collections.abc import Mapping, Sequence
+from time import perf_counter
 from typing import Any
 
-Vector3 = tuple[float, float, float]
-ForwardKinematics = Callable[[str, Sequence[float]], Vector3]
+from .checks import (
+    ACTION_KEYS,
+    ForwardKinematics,
+    check_chunk_shape,
+    check_gripper,
+    check_joint_limits,
+    check_separation,
+    check_steps,
+    check_velocity,
+    check_workspace,
+    compute_end_effectors,
+    parse_action,
+    parse_current_state,
+)
+from .config import SafetyConfig, Vector3
+from .report import Decision, Finding, SafetyReport, UnsafeActionError, violation
 
-
-@dataclass(frozen=True)
-class SafetyConfig:
-    """Development guardrails; calibrate these against the simulator embodiment."""
-
-    joint_limits: Mapping[str, tuple[tuple[float, float], ...]] = field(
-        default_factory=lambda: {
-            "right": ((-3.14159, 3.14159),) * 6,
-            "left": ((-3.14159, 3.14159),) * 6,
-        }
-    )
-    max_joint_step_rad: float = 0.35
-    require_current_state: bool = True
-    min_rows: int = 1
-    max_rows: int = 200
-    require_workspace_check: bool = False
-    workspace_min_m: Vector3 = (-1.0, -1.0, 0.0)
-    workspace_max_m: Vector3 = (1.0, 1.0, 1.5)
-    minimum_tool_separation_m: float | None = None
-
-
-@dataclass(frozen=True)
-class SafetyReport:
-    approved: bool
-    risk_score: int
-    findings: tuple[str, ...]
-    checked_rows: int
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "approved": self.approved,
-            "risk_score": self.risk_score,
-            "findings": list(self.findings),
-            "checked_rows": self.checked_rows,
-        }
-
-
-class UnsafeActionError(RuntimeError):
-    def __init__(self, report: SafetyReport):
-        self.report = report
-        super().__init__("DreamGuard blocked the action: " + "; ".join(report.findings))
-
-
-def _as_number(raw: Any, label: str) -> float:
-    # numbers.Real covers Python and NumPy numeric scalars; bool and np.bool_ are rejected.
-    if isinstance(raw, bool) or not isinstance(raw, Real):
-        raise ValueError(f"{label} is not numeric")  # noqa: TRY004
-    number = float(raw)
-    if not isfinite(number):
-        raise ValueError(f"{label} is not finite")
-    return number
-
-
-def _as_vector(value: Any, length: int, label: str, description: str) -> list[float]:
-    if hasattr(value, "tolist"):
-        value = value.tolist()
-    if not isinstance(value, (list, tuple)) or len(value) != length:
-        raise ValueError(f"{label} must contain {length} values: {description}")
-    return [_as_number(raw, f"{label}[{index}]") for index, raw in enumerate(value)]
-
-
-def _as_rows(value: Any, key: str) -> list[list[float]]:
-    if hasattr(value, "tolist"):
-        value = value.tolist()
-    if not isinstance(value, (list, tuple)) or not value:
-        raise ValueError(f"{key} must be a non-empty list of action rows")
-    return [
-        _as_vector(row, 7, f"{key}[{row_index}]", "6 joints + gripper")
-        for row_index, row in enumerate(value)
-    ]
+__all__ = [
+    "Decision",
+    "Finding",
+    "ForwardKinematics",
+    "SafetyConfig",
+    "SafetyGuard",
+    "SafetyReport",
+    "UnsafeActionError",
+    "Vector3",
+]
 
 
 class SafetyGuard:
@@ -99,130 +51,10 @@ class SafetyGuard:
         *,
         current_joints: Mapping[str, Sequence[float]] | None = None,
     ) -> SafetyReport:
-        findings: list[str] = []
-        parsed: dict[str, list[list[float]]] = {}
-        checked_rows = 0
-
-        if not isinstance(action, Mapping):
-            return SafetyReport(False, 100, ("Action is not a mapping",), 0)
-
-        for arm, key in (("right", "q_r_chunk"), ("left", "q_l_chunk")):
-            if key not in action:
-                findings.append(f"Missing required action field: {key}")
-                continue
-            try:
-                parsed[arm] = _as_rows(action[key], key)
-                checked_rows = max(checked_rows, len(parsed[arm]))
-            except ValueError as exc:
-                findings.append(str(exc))
-
-        if findings:
-            return SafetyReport(False, 100, tuple(findings), checked_rows)
-
-        lengths = {arm: len(rows) for arm, rows in parsed.items()}
-        if lengths["right"] != lengths["left"]:
-            findings.append(
-                f"Arm chunks have different lengths: right={lengths['right']}, "
-                f"left={lengths['left']} rows"
-            )
-        elif not self.config.min_rows <= checked_rows <= self.config.max_rows:
-            findings.append(
-                f"Chunk has {checked_rows} rows; allowed range is "
-                f"[{self.config.min_rows}, {self.config.max_rows}] rows"
-            )
-
-        current: dict[str, list[float]] = {}
-        for arm in ("right", "left"):
-            raw_state = current_joints.get(arm) if current_joints else None
-            if raw_state is None:
-                if self.config.require_current_state:
-                    findings.append(f"Current {arm} joint state is required but missing")
-                continue
-            try:
-                current[arm] = _as_vector(raw_state, 6, f"Current {arm} joint state", "6 joints")
-            except ValueError as exc:
-                findings.append(str(exc))
-
-        if findings:
-            return SafetyReport(False, 100, tuple(findings), checked_rows)
-
-        fk_positions: dict[str, list[Vector3]] = {"right": [], "left": []}
-
-        for arm, rows in parsed.items():
-            limits = self.config.joint_limits.get(arm)
-            if limits is None or len(limits) != 6:
-                findings.append(f"No valid six-joint limits configured for {arm} arm")
-                continue
-
-            # Row 0 is always compared against the measured state when it is available.
-            previous: Sequence[float] | None = current.get(arm)
-
-            for row_index, row in enumerate(rows):
-                joints, gripper = row[:6], row[6]
-
-                for joint_index, (value, bounds) in enumerate(zip(joints, limits)):
-                    low, high = bounds
-                    if not (low <= value <= high):
-                        findings.append(
-                            f"{arm} row {row_index}: joint {joint_index} target "
-                            f"{value:.3f} outside [{low:.3f}, {high:.3f}] rad"
-                        )
-
-                if not 0.0 <= gripper <= 1.0:
-                    findings.append(
-                        f"{arm} row {row_index}: gripper {gripper:.3f} outside [0, 1]"
-                    )
-
-                if previous is not None:
-                    largest_step = max(abs(a - b) for a, b in zip(joints, previous))
-                    if largest_step > self.config.max_joint_step_rad:
-                        findings.append(
-                            f"{arm} row {row_index}: joint step {largest_step:.3f} rad "
-                            f"exceeds {self.config.max_joint_step_rad:.3f} rad"
-                        )
-                previous = joints
-
-                if self.forward_kinematics is not None:
-                    try:
-                        xyz = tuple(
-                            float(v) for v in self.forward_kinematics(arm, joints)
-                        )
-                        if len(xyz) != 3 or not all(isfinite(v) for v in xyz):
-                            raise ValueError("FK must return three finite coordinates")
-                        fk_positions[arm].append(xyz)  # type: ignore[arg-type]
-                        if not all(
-                            self.config.workspace_min_m[i] <= xyz[i]
-                            <= self.config.workspace_max_m[i]
-                            for i in range(3)
-                        ):
-                            findings.append(
-                                f"{arm} row {row_index}: end-effector outside configured workspace"
-                            )
-                    except Exception as exc:  # noqa: BLE001 - fail closed on any FK error
-                        findings.append(f"{arm} row {row_index}: FK check failed: {exc}")
-                elif self.config.require_workspace_check:
-                    findings.append("Workspace check required but no FK callback was supplied")
-                    break
-
-        if self.config.minimum_tool_separation_m is not None:
-            if self.forward_kinematics is None:
-                findings.append("Tool-separation check requires a forward-kinematics callback")
-            elif len(fk_positions["right"]) == len(fk_positions["left"]):
-                for index, (right, left) in enumerate(
-                    zip(fk_positions["right"], fk_positions["left"])
-                ):
-                    distance = sqrt(sum((right[i] - left[i]) ** 2 for i in range(3)))
-                    if distance < self.config.minimum_tool_separation_m:
-                        findings.append(
-                            f"Row {index}: end-effector separation {distance:.3f} m "
-                            f"is below {self.config.minimum_tool_separation_m:.3f} m"
-                        )
-            else:
-                findings.append("Cannot compare end-effectors: FK results are incomplete")
-
-        approved = not findings
-        risk_score = 0 if approved else min(100, 60 + 10 * len(findings))
-        return SafetyReport(approved, risk_score, tuple(findings), checked_rows)
+        started = perf_counter()
+        findings, checked_rows = self._evaluate(action, current_joints)
+        latency_ms = (perf_counter() - started) * 1000.0
+        return SafetyReport.from_findings(findings, checked_rows, latency_ms)
 
     def approve(
         self,
@@ -231,11 +63,66 @@ class SafetyGuard:
         current_joints: Mapping[str, Sequence[float]] | None = None,
     ) -> dict[str, Any]:
         report = self.inspect(action, current_joints=current_joints)
-        if not report.approved:
+        if report.decision is not Decision.APPROVE:
             raise UnsafeActionError(report)
         # Preserve Dream-1's other metadata fields; validated chunks are copied.
         approved = dict(action)
-        for key in ("q_r_chunk", "q_l_chunk"):
+        for key in ACTION_KEYS.values():
             rows = action[key].tolist() if hasattr(action[key], "tolist") else action[key]
             approved[key] = [list(row) for row in rows]
         return approved
+
+    def _evaluate(
+        self,
+        action: Mapping[str, Any],
+        current_joints: Mapping[str, Sequence[float]] | None,
+    ) -> tuple[list[Finding], int]:
+        config = self.config
+        parsed, findings = parse_action(action)
+        checked_rows = max((len(rows) for rows in parsed.values()), default=0)
+        if findings:
+            return findings, checked_rows
+
+        findings += check_chunk_shape(parsed, config.min_rows, config.max_rows)
+        current, state_findings = parse_current_state(
+            current_joints, required=config.require_current_state
+        )
+        findings += state_findings
+        if findings:
+            return findings, checked_rows
+
+        positions: dict[str, list[Vector3 | None]] = {}
+        for arm, rows in parsed.items():
+            findings += check_joint_limits(
+                arm, rows, config.joint_limits[arm], config.near_limit_margin_rad
+            )
+            findings += check_gripper(arm, rows, config.gripper_range)
+            findings += check_steps(arm, rows, current.get(arm), config.max_joint_step_rad)
+            if config.max_joint_velocity_rad_s is not None:
+                findings += check_velocity(
+                    arm, rows, config.max_joint_velocity_rad_s, config.action_hz
+                )
+            if self.forward_kinematics is not None:
+                positions[arm], fk_findings = compute_end_effectors(
+                    arm, rows, self.forward_kinematics
+                )
+                findings += fk_findings
+                findings += check_workspace(
+                    arm, positions[arm], config.workspace_min_m, config.workspace_max_m
+                )
+
+        if self.forward_kinematics is None and config.require_workspace_check:
+            findings.append(
+                violation("workspace", "Workspace check required but no FK callback was supplied")
+            )
+        if config.minimum_tool_separation_m is not None:
+            if self.forward_kinematics is None:
+                findings.append(
+                    violation(
+                        "separation",
+                        "Tool-separation check requires a forward-kinematics callback",
+                    )
+                )
+            else:
+                findings += check_separation(positions, config.minimum_tool_separation_m)
+        return findings, checked_rows
