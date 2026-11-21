@@ -16,6 +16,8 @@ dependencies = [
 
 [project.optional-dependencies]
 sim = ["mujoco>=4.0.1,<5", "pillow>=13.0,<14"]
+# Live Dream-1 with the YAM config needs dream's IK, shipped in the full dreamlabs package
+live = ["dreamlabs==1.0.37"]
 dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.28", "pylint>=3.0"]
 
 [tool.setuptools.packages.find]

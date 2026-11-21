@@ -402,7 +402,7 @@ dreamguard/
 ### Phase 7 — Real Dream-1 runs (PAID — each attempt requires approval) — **IN PROGRESS**
 
 - [x] Free preflight (`policy` + `set_observation`, no `get_action`)
-- [ ] Attempt 1: single `get_action`, recorded; verify joint conventions, adjust profile
+- [x] Attempt 1: single `get_action`, recorded; verify joint conventions, adjust profile
 - [ ] Attempt 2: short run (~10 chunks), recorded; measure false rejections, tune limits
 - [ ] Attempt 3: final demo recording
 - Fallback if credits are unavailable: demo on `fake` + `replay` sources
@@ -437,7 +437,24 @@ dreamguard/
   `backend/tests/conftest.py`); all live-source tests use a fake SDK client.
 - Tests: 218 Python (core, sim, backend) + 24 frontend passing; ruff, ESLint, tsc clean.
 
-**Waiting for approval:** Level 2 preflight (one `GET /v1/models`) and Attempt 1 (one `get_action`).
+**Attempt 1 (approved, done — 1 paid call)**
+- The YAM config's `ik` needs dream's IK (`dream_ik`), which ships in the full `dreamlabs` package,
+  not `dreamlabs-client`; installed `dreamlabs==1.0.37` (newest ≥ 7 days old) into `.venv` as the
+  optional extra `live` (numpy pinned to 2.2.6 by it; all 218 tests still pass). The failed first
+  try stopped in the SDK's local IK check, before any network request.
+- Level 2 preflight: key valid, `dreamlabs/dream-1-beta` available, 0 paid calls.
+- Attempt 1 (`fixtures/dream1/20261121T213830Z-b07e9f08.jsonl`): 48-row chunk (reply also carries
+  `q_r`, `q_l`, `per_key`), **APPROVE, risk 0, 4.4 ms**. Round trip 2.45 s (gateway 2.29 s,
+  inference 0.31 s, network 0.16 s).
+- **Joint conventions match:** first row within 0.034 rad of the measured joints on every joint of
+  both arms, so the Menagerie joint limits apply unchanged; no profile change.
+- Margins vs `yam_sim`: max step 0.034 rad (limit 0.35), max velocity 0.61 rad/s (limit 3.0),
+  closest joint-limit distance 0.39 rad, grasp sites z ≥ 1.02 m (workspace ≥ 0.76 m), separation
+  0.59 m (limit 0.10 m). No false-rejection risk; one chunk is too little to tighten limits.
+- The SDK warns once per policy that nobody has run `python -m dream.check` / recorded an input
+  check; that is for real arms and does not apply to the simulator.
+
+**Waiting for approval:** Attempt 2 (about 10 paid calls).
 
 ### Phase 8 — Documentation and submission
 
