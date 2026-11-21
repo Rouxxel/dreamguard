@@ -79,7 +79,7 @@ robot.play(action)  # only the approved action reaches the controller
 
 Do not call `robot.play(client.get_action())` directly once DreamGuard is in the loop.
 
-The exact camera, observation and simulator objects depend on the Playground robot configuration. Do not guess these fields: copy the actual observation mapping and robot loop from the Playground's current integration example. The `examples/dream_client_loop_skeleton.py` file shows where the guard belongs without inventing camera or robot APIs.
+The exact camera, observation and simulator objects depend on the Playground robot configuration. Do not guess these fields: copy the actual observation mapping and robot loop from the Playground's current integration example. The `integrations/dream_client_loop_skeleton.py` file shows where the guard belongs without inventing camera or robot APIs.
 
 ## Configure real limits before connecting a simulator
 

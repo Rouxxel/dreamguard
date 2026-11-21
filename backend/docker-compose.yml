@@ -1,0 +1,24 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: DOCKERFILE
+    container_name: dreamguard_backend
+    env_file: ../.env
+    ports:
+      - "127.0.0.1:${SERVER_PORT:-8000}:8000"
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs  # Persist logs
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # For development with live reload, mount the source and override the command:
+    # volumes:
+    #   - .:/app
+    # command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload

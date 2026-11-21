@@ -7,22 +7,25 @@ name = "dreamguard"
 version = "0.1.0"
 description = "Fail-closed development safety middleware for Dream-1 action chunks"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
   "dreamlabs-client>=1.1.3",
+  "numpy>=1.24",
   "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.28", "pylint>=3.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-testpaths = ["tests"]
+testpaths = ["tests", "backend/tests"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# The backend follows its own conventions and is linted with backend/.pylintrc
+extend-exclude = ["backend"]

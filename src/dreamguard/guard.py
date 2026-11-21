@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from math import isfinite, sqrt
-from typing import Any, Callable, Mapping, Sequence
-
+from typing import Any
 
 Vector3 = tuple[float, float, float]
 ForwardKinematics = Callable[[str, Sequence[float]], Vector3]
@@ -62,7 +62,7 @@ def _as_rows(value: Any, key: str) -> list[list[float]]:
         converted: list[float] = []
         for column, raw in enumerate(row):
             if isinstance(raw, bool) or not isinstance(raw, (int, float)):
-                raise ValueError(f"{key}[{row_index}][{column}] is not numeric")
+                raise ValueError(f"{key}[{row_index}][{column}] is not numeric")  # noqa: TRY004
             number = float(raw)
             if not isfinite(number):
                 raise ValueError(f"{key}[{row_index}][{column}] is not finite")
@@ -165,7 +165,7 @@ class SafetyGuard:
                             findings.append(
                                 f"{arm} row {row_index}: end-effector outside configured workspace"
                             )
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - fail closed on any FK error
                         findings.append(f"{arm} row {row_index}: FK check failed: {exc}")
                 elif self.config.require_workspace_check:
                     findings.append("Workspace check required but no FK callback was supplied")

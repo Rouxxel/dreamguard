@@ -1,0 +1,32 @@
+{
+    "defaults":{
+        "general_data_path":"src/core_specs/data/general_data.json",
+        "env_file_path":"../.env"
+    },
+
+    "logging":{
+        "logging_level":"info",
+        "dir_name":"logs",
+        "log_file_name":"dreamguard_backend"
+    },
+
+    "network":{
+        "uvicorn_app_reference": "main:app",
+        "server_port":8000,
+        "host": "127.0.0.1",
+        "reload": false,
+        "workers": 1,
+        "proxy_headers": true,
+        "cors_origins": ["http://localhost:5173", "http://127.0.0.1:5173"]
+    },
+
+    "endpoints": {
+        "root_directory_endpoint":{
+            "request_limit":60,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "",
+            "endpoint_tag":"health",
+            "endpoint_route": "/"
+        }
+    }
+}

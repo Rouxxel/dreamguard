@@ -1,0 +1,251 @@
+# DreamGuard — Implementation Plan
+
+Companion to [PRD.md](PRD.md). This document is the working checklist for the MVP.
+Each phase ends with a review: work on the next phase starts only after explicit approval.
+
+**Status legend:** `[x]` finished · `[ ]` pending
+
+---
+
+## 1. Current state (baseline review)
+
+| Area | State at baseline |
+|---|---|
+| Core library (`src/dreamguard`) | `guard.py` with `SafetyConfig`, `SafetyReport`, `UnsafeActionError`, single `inspect()` method; `adapter.py` wraps `client.get_action()`; `demo.py` with 2 scenarios |
+| Tests | 7 passing tests (`tests/test_guard.py`) |
+| Backend | FastAPI scaffold imported as `python_rest_api_template/` (not yet integrated) |
+| Frontend | None |
+| Simulator | None |
+| Dream SDK | `dreamlabs-client` 1.1.7 (Python 3.10–3.12) |
+
+### Confirmed safety defects (reproduced)
+
+| # | Input | Result | Issue |
+|---|---|---|---|
+| D1 | NaN in `current_joints` | APPROVED | `abs(nan) > limit` is False — fails open |
+| D2 | 3 rad jump on row 0, no `current_joints` | APPROVED | Step check skipped when state is absent |
+| D3 | Rows of `np.float32` | BLOCKED | False rejection (`np.float32` is not a `float`) |
+| D4 | Right chunk 50 rows, left 3 rows | APPROVED | Chunk length / arm consistency never checked |
+
+### PRD gap summary
+
+| Requirement | Baseline |
+|---|---|
+| FR-01 Interception | Only `get_action` wrapped; `robot.play()` reachable directly |
+| FR-02 Input validation | Partial (D3, D4, current state unvalidated) |
+| FR-03 Joint limits | Placeholder ±π limits |
+| FR-04 Movement limits | Partial (D1, D2); no velocity limit tied to `action_hz` |
+| FR-05 Workspace | FK hook only; no YAM FK; no coordinate frame defined |
+| FR-06 Separation | Untested |
+| FR-07 Risk score | `60 + 10 × findings` |
+| FR-08 Decisions | Boolean only; no `Decision` enum |
+| FR-09 Logging | Missing |
+| FR-10 Replay | Missing |
+
+### External findings
+
+- **Dream SDK action format:** `q_r_chunk` / `q_l_chunk` are `[H, 7]` (6 joints + gripper), default
+  `action_hz=20`, `execution_horizon=30`. State arrays are float32. The client smooths chunks before returning them.
+- **No programmatic simulator:** the Dream Labs Sim Playground is browser-only. DreamGuard provides its own
+  robot API through a local MuJoCo simulation.
+- **YAM model:** MuJoCo Menagerie `i2rt_yam` (MIT). Real joint limits (rad):
+
+  | Joint | 1 | 2 | 3 | 4 | 5 | 6 |
+  |---|---|---|---|---|---|---|
+  | Range | −2.618…3.054 | 0…3.665 | 0…3.665 | ±1.571 | ±1.571 | ±2.094 |
+
+  Gripper: finger slide 0…0.041 m. FK target: `grasp_site`.
+  **Risk:** Dream-1 joint zero conventions may differ from the MuJoCo model; verify with the first real chunk.
+
+---
+
+## 2. Decisions
+
+| Topic | Decision |
+|---|---|
+| Robot API | Local MuJoCo bimanual YAM simulator |
+| Dashboard | React + Vite + TypeScript |
+| Backend | Imported FastAPI scaffold, integrated as `backend/` following its conventions |
+| Scope | MVP. APPROVE / BLOCK only; MODIFY reserved for later |
+| RSA utilities | Kept (`en_de_crypt.py`, `keys_generator.py`, `keys_generator_dtrmnstc.py`) |
+| Removed from scaffold | `validators.py`, Redis cache, `pycache_n_logs_deleter.py`, placeholder router/model/service; deps `phonenumbers`, `redis`, `requests`, `pyyaml` |
+| `.env.example` | Kept (standard name) |
+| Author headers | Kept (Sebastian Russo) |
+| Wording | No "template" / "example" naming in the integrated backend |
+| Configuration format | JSON, matching the backend's `config_file.json` convention |
+
+---
+
+## 3. Paid-call policy
+
+Dream credits are scarce. **No paid call is made without explicit approval for that specific run.**
+
+| SDK action | Cost |
+|---|---|
+| `DreamClient()` / `close()` | Free (local) |
+| `policy(config)` | Free (sends nothing) |
+| `set_observation(...)` | Free (local validation against the embodiment) |
+| **`get_action()`** | **Paid — inference** |
+| `python -m dream.check`, `get_models()` | Treated as paid; not run |
+
+Enforcement:
+- Paid calls require `dream.allow_paid_calls: true` in `config_file.json` **and** `DREAMGUARD_ALLOW_PAID=1` in `.env`.
+- Hard cap per run: `max_paid_calls_per_run`. The dashboard confirms before a paid run.
+- Free **preflight**: `policy()` + `set_observation()` with simulator frames/state, stopping before `get_action()`.
+- Every paid reply is recorded to `fixtures/dream1/*.json` and reusable through the `replay` source.
+- Budget: 3 attempts, only after all free work is complete (schema capture → short run → final demo).
+
+---
+
+## 4. Target repository layout
+
+```text
+dreamguard/
+├── src/dreamguard/              # core library (no web dependencies)
+│   ├── guard.py checks.py report.py config.py adapter.py events.py
+│   ├── sim/        scene_bimanual.xml, vendored i2rt_yam (MIT), robot.py, kinematics.py
+│   └── sources/    fake.py, replay.py, dream1.py (paid-call guarded)
+├── profiles/yam_sim.json        # safety profile
+├── backend/                     # FastAPI service
+│   ├── main.py  requirements.txt  DOCKERFILE  docker-compose.yml  start.bat  start.sh
+│   ├── tests/
+│   └── src/
+│       ├── api_endpoints/root_endpoint.py
+│       ├── api_endpoints/routers/{runs,sessions,safety,stream}/   # one endpoint per file
+│       ├── core_specs/configuration/  config_file.json  config_loader.py
+│       ├── core_specs/data/           general_data.json  data_loader.py
+│       ├── models/  resources/  utils/
+├── frontend/                    # React + Vite + TS
+├── fixtures/dream1/             # recorded paid replies
+├── integrations/                # Dream-1 loop integration (was examples/)
+├── tests/                       # core library tests
+└── documentation/  PRD.md  IMPLEMENTATION_PLAN.md
+```
+
+### `config_file.json` sections
+
+- `defaults` — data, profile, sessions and frontend build paths
+- `logging` — level, directory, `log_file_name: "dreamguard_backend"`
+- `network` — host `127.0.0.1`, port, `workers: 1`, `cors_origins`
+- `dream` — `allow_paid_calls: false`, `max_paid_calls_per_run`, `checkpoint`, `timeout_ms`, `action_hz`
+- `simulation` — scene, camera 320×176, JPEG quality 85, physics rate
+- `endpoints` — one entry per route (`request_limit`, `unit_of_time_for_limit`, `endpoint_prefix`, `endpoint_tag`, `endpoint_route`)
+
+`general_data.json` holds the fault catalog, scenarios, joint names and project metadata.
+
+---
+
+## 5. Phases
+
+### Phase 0 — Environment and backend integration (free) — **FINISHED**
+
+- [x] Create `.venv` (Python 3.12) and install the core library with dev dependencies
+- [x] Move `python_rest_api_template/` to `backend/` (`git mv`); delete its empty `.env`
+- [x] Remove unused scaffold pieces and dependencies (keep RSA utilities)
+- [x] Remove "template" / "example" wording; rename config, logger, Docker and start scripts to DreamGuard
+- [x] Fix scaffold defects:
+  - [x] T1 `requirements.txt` UTF-16 without BOM → UTF-8
+  - [x] T2 `.gitignore` ignored `test_*.py` / `*_test.py`
+  - [x] T3 `.dockerignore` allowed `.env` into images
+  - [x] T4 `log_handler(...)` called as a function in `main.py`
+  - [x] T5 config/data loaders used CWD-relative paths (`resolve_backend_path`)
+  - [x] T6 inconsistent `.env` / `.env.local` loading; load repo-root `.env`
+  - [x] T7 `en_de_crypt.py` fails at import without keys (kept; not imported by the app; documented)
+  - [x] T8 no CORS configuration (`network.cors_origins`)
+  - [x] T9 `workers` pinned to 1; WebSocket rate-limit exception documented
+  - [x] T10 Docker cleanup (stage casing, obsolete `version:`, Redis service, container names)
+- [x] Merge `.gitignore` files; update root `.env.example`
+- [x] `pyproject.toml`: `requires-python = ">=3.11,<3.13"`, `numpy` dependency
+- [x] Backend health test, `AGENTS.md`, CI workflow (ruff + core tests + backend tests)
+- [x] Verify: core tests, backend tests, backend boots and `/` responds
+
+**Phase 0 notes**
+- Removed: `validators.py`, Redis cache (`resources/cache/`), `pycache_n_logs_deleter.py`, placeholder
+  routers/model/service, empty `resources/db/` and `resources/mock_db_jsons/` placeholders; dependencies
+  `phonenumbers`, `redis`, `requests`, `pyyaml`.
+- `backend/.env.example` and `backend/.gitignore` merged into the repository-level files (single `.env`).
+- `examples/` renamed to `integrations/`; PRD path references are updated in Phase 8.
+- Ruff lints the core library (backend excluded); the backend is linted with `backend/.pylintrc`
+  (CI gate `--fail-under=9.5`, current score 9.74). Section-marker strings and the `load_dotenv`
+  import order are backend conventions and are disabled in `.pylintrc`.
+- `scripts/check_dream_sdk.py` passes (SDK 1.1.7, key loaded, no inference request).
+- `docker compose config` validates; the Docker image was not built.
+- Results: 11 tests passing (7 core + 4 backend), ruff clean, backend serves `/` and `/docs`.
+
+### Phase 1 — Safety defect fixes (free)
+
+- [ ] D1 validate `current_joints` (length, numeric, finite) → BLOCK on failure
+- [ ] D2 `require_current_state = True` (fail closed); row 0 always checked against current state
+- [ ] D3 accept numpy scalars / `numbers.Real`, reject `bool`
+- [ ] D4 configurable `min_rows` / `max_rows`; both arms must share H
+- [ ] Missing tests: workspace out of bounds, required FK missing, FK raises, separation violated, FK non-finite
+- [ ] Fix demo literal `\n` output
+
+### Phase 2 — Safety engine restructure (free)
+
+- [ ] `report.py`: `Decision` enum, structured `Finding`, `SafetyReport` with latency
+- [ ] `checks.py`: one pure function per rule
+- [ ] `config.py`: `SafetyConfig` + JSON profile loader; `profiles/yam_sim.json` with real YAM limits
+- [ ] Velocity limit (`max_joint_velocity_rad_s × 1/action_hz`)
+- [ ] Severity-weighted risk score + near-limit warnings
+- [ ] Public API (`SafetyGuard.inspect` / `approve`) unchanged
+
+### Phase 3 — Enforced interception and events (free)
+
+- [ ] `GuardedController`: sole path to `robot.play`; holds pose on BLOCK; stops after N consecutive blocks
+- [ ] `guarded_get_action` derives `current_joints` from the observation
+- [ ] `events.py`: event bus → JSONL session files + live subscribers
+- [ ] Spy-robot test: blocked actions never reach `play()`
+
+### Phase 4 — MuJoCo bimanual simulator (free)
+
+- [ ] Vendor `i2rt_yam` (MIT) and build `scene_bimanual.xml` (2 arms, overhead + 2 wrist cameras, table, objects)
+- [ ] `SimRobot`: `joints()`, `gripper()`, `jpeg(camera)` (320×176, q85), `play(chunk)` at `action_hz`
+- [ ] Gripper mapping 0…1 → 0…0.041 m
+- [ ] `mujoco_fk`: `grasp_site` in world frame (workspace + separation checks)
+- [ ] `FakeDreamClient` (scripted chunks + fault injection) and replay source
+
+### Phase 5 — Backend API (free)
+
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/` | Health: simulator, SDK, paid-call status |
+| POST | `/api/runs` | Start run (`fake` / `replay` / `dream1`, scenario, prompt) |
+| POST | `/api/runs/{id}/stop` | Stop run |
+| POST | `/api/runs/{id}/faults` | Inject a catalogued fault |
+| GET | `/api/runs/current` | Status and counters |
+| GET | `/api/sessions`, `/api/sessions/{id}` | Session list / replay data (path-confined) |
+| GET | `/api/safety/profile` | Active limits |
+| POST | `/api/safety/inspect` | Validate any posted action |
+| GET | `/api/safety/metrics` | PRD §13 metrics |
+| WS | `/ws/events` | Live safety decisions |
+| GET | `/api/stream/camera/{name}` | MJPEG camera stream |
+
+- [ ] Each route follows the backend conventions (config-driven, rate-limited, model split, service layer)
+- [ ] Backend tests with FastAPI TestClient
+
+### Phase 6 — Dashboard (free)
+
+- [ ] Vite + React + TypeScript scaffold in `frontend/`
+- [ ] Types generated from the backend OpenAPI schema
+- [ ] TanStack Query, typed WebSocket hook, Recharts, Tailwind (versions ≥ 7 days old)
+- [ ] Live page: camera, run controls, fault buttons, decision feed, risk chart, joint-limit bars, metrics
+- [ ] Sessions page: list + step-through replay
+- [ ] Profile page: read-only limits
+- [ ] Vite dev proxy; production build served by FastAPI
+- [ ] Vitest component tests
+
+### Phase 7 — Real Dream-1 runs (PAID — each attempt requires approval)
+
+- [ ] Free preflight (`policy` + `set_observation`, no `get_action`)
+- [ ] Attempt 1: single `get_action`, recorded; verify joint conventions, adjust profile
+- [ ] Attempt 2: short run (~10 chunks), recorded; measure false rejections, tune limits
+- [ ] Attempt 3: final demo recording
+- Fallback if credits are unavailable: demo on `fake` + `replay` sources
+
+### Phase 8 — Documentation and submission
+
+- [ ] README (core, backend, frontend, safety limitations)
+- [ ] Architecture diagram
+- [ ] Update PRD setup section (clone instead of ZIP)
+- [ ] Demo video / screenshots

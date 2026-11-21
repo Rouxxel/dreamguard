@@ -1,5 +1,5 @@
 import os
-import sys
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,7 +18,7 @@ if not os.getenv("DREAM_API_KEY"):
 try:
     client = dream.DreamClient()
     client.close()
-except Exception as exc:
+except Exception as exc:  # noqa: BLE001 - report any SDK init failure
     print(f"ERROR: DreamClient initialization failed: {type(exc).__name__}: {exc}")
     raise SystemExit(1)
 

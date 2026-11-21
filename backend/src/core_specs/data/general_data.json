@@ -1,0 +1,7 @@
+{
+    "metadata": {
+        "project": "DreamGuard",
+        "description": "Safety supervisor middleware for Dream-1 robot actions",
+        "maintainer": "Sebastian Russo"
+    }
+}
