@@ -3,14 +3,17 @@ Integration skeleton only.
 
 Fill `frames` and `observation` from the current Dream-1 Playground example.
 The simulator's robot object/API is intentionally not guessed here.
+
+WARNING: `client.get_action()` is a paid Dream-1 inference call. Do not run this without
+approval for that specific run (see documentation/IMPLEMENTATION_PLAN.md, paid-call policy).
 """
 import dream
 from dotenv import load_dotenv
 
 load_dotenv()
 
+from dreamguard import SafetyGuard, load_builtin_profile
 from dreamguard.adapter import guarded_get_action
-from dreamguard.guard import SafetyConfig, SafetyGuard
 
 POLICY_CONFIG = {
     "timeout_ms": 15000,
@@ -39,16 +42,13 @@ POLICY_CONFIG = {
 
 
 def run_one_policy_step(frames: dict, observation: dict) -> dict:
-    guard = SafetyGuard(SafetyConfig())
+    guard = SafetyGuard(load_builtin_profile("yam_sim"))
     with dream.DreamClient() as client:
         client.policy(POLICY_CONFIG)
         client.set_observation(frames, observation)
-        # The returned dict must be the ONLY action passed to the simulator.
-        current_joints = {
-            "right": observation["state.right_arm"],
-            "left": observation["state.left_arm"],
-        }
-        return guarded_get_action(client, guard, current_joints=current_joints)
+        # The returned dict must be the ONLY action passed to the simulator. The measured
+        # joint state is read from observation["state.right_arm"] / ["state.left_arm"].
+        return guarded_get_action(client, guard, observation)
 
 
 if __name__ == "__main__":

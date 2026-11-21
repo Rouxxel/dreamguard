@@ -33,6 +33,18 @@ __all__ = [
 ]
 
 
+def approved_copy(action: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy of an approved action: Dream-1 metadata kept, arm chunks copied as plain lists.
+
+    Copying means later changes to the caller's objects cannot alter what is executed.
+    """
+    approved = dict(action)
+    for key in ACTION_KEYS.values():
+        rows = action[key].tolist() if hasattr(action[key], "tolist") else action[key]
+        approved[key] = [list(row) for row in rows]
+    return approved
+
+
 class SafetyGuard:
     """Inspects Dream-1 YAM action chunks and approves or blocks them."""
 
@@ -65,12 +77,7 @@ class SafetyGuard:
         report = self.inspect(action, current_joints=current_joints)
         if report.decision is not Decision.APPROVE:
             raise UnsafeActionError(report)
-        # Preserve Dream-1's other metadata fields; validated chunks are copied.
-        approved = dict(action)
-        for key in ACTION_KEYS.values():
-            rows = action[key].tolist() if hasattr(action[key], "tolist") else action[key]
-            approved[key] = [list(row) for row in rows]
-        return approved
+        return approved_copy(action)
 
     def _evaluate(
         self,

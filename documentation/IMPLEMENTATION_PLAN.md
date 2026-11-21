@@ -228,12 +228,33 @@ dreamguard/
 - Local note: the sandbox blocks pytest's default temp dir, so local runs used
   `--basetemp=.pytest_cache/tmp`; CI is unaffected.
 
-### Phase 3 — Enforced interception and events (free)
+### Phase 3 — Enforced interception and events (free) — **FINISHED**
 
-- [ ] `GuardedController`: sole path to `robot.play`; holds pose on BLOCK; stops after N consecutive blocks
-- [ ] `guarded_get_action` derives `current_joints` from the observation
-- [ ] `events.py`: event bus → JSONL session files + live subscribers
-- [ ] Spy-robot test: blocked actions never reach `play()`
+- [x] `GuardedController`: sole path to `robot.play`; holds pose on BLOCK; stops after N consecutive blocks
+- [x] `guarded_get_action` derives `current_joints` from the observation
+- [x] `events.py`: event bus → JSONL session files + live subscribers
+- [x] Spy-robot test: blocked actions never reach `play()`
+
+**Phase 3 notes**
+- `GuardedController(robot, guard, bus=, session_id=, source=, max_consecutive_blocks=3, on_block=)`
+  with `submit(action, current_joints=| observation=)` and `reset()`. The robot is held privately;
+  APPROVE plays a copy of the validated action (later caller mutations cannot alter it), BLOCK plays
+  nothing (position-controlled robots keep their last approved targets) and runs `on_block`.
+  After N consecutive blocks the controller halts and raises `ControllerHaltedError` until `reset()`.
+  Submissions are serialized with a lock.
+- Validation runs once per action: `guard.approved_copy()` is shared by `approve()` and the controller.
+- `events.py`: `SafetyEvent` (session, sequence, timestamp, source, decision report, action chunks,
+  measured state, executed / halted / error), thread-safe `EventBus` (failing subscribers are logged
+  and isolated), `JsonlSessionRecorder` (one JSON line per decision, `allow_nan=False`),
+  `read_session`, `list_sessions`. Session ids are restricted to `[A-Za-z0-9_-]{1,64}` because they
+  become file names (path traversal rejected).
+- A robot `play()` failure is recorded in the event (`executed=False`, `error`) and re-raised.
+- `guarded_get_action(client, guard, observation)` reads `state.right_arm` / `state.left_arm`;
+  explicit `current_joints=` still works.
+- Mutation check: forcing the controller to play every action makes 12 interception tests fail.
+- Integration skeleton uses the `yam_sim` profile and the observation helper, and is marked as a
+  paid call. README integration section rewritten around `GuardedController` and session recording.
+- Tests: 130 core + 4 backend = 134 passing; ruff clean; backend pylint 9.74.
 
 ### Phase 4 — MuJoCo bimanual simulator (free)
 

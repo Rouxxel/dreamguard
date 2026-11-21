@@ -68,26 +68,36 @@ This only imports the SDK, checks that the key is present, constructs the client
 
 Dream Labs documents the custom-loop sequence as `DreamClient.policy(config)`, `set_observation(frames, observation)` on camera ticks, then `get_action()` to receive an action chunk. Dream-1 YAM chunks use `q_r_chunk` and `q_l_chunk`, with six arm joints and a gripper value in each row.
 
-Use the adapter after `get_action()` and before any simulator/controller `play()` call:
+Hand every action to a `GuardedController`. It is the only object that calls `robot.play()`:
 
 ```python
-from dreamguard.adapter import guarded_get_action
-from dreamguard.guard import SafetyConfig, SafetyGuard
+from dreamguard import SafetyGuard, load_builtin_profile
+from dreamguard.adapter import GuardedController
+from dreamguard.events import EventBus, JsonlSessionRecorder
 
-guard = SafetyGuard(SafetyConfig())
+bus = EventBus()
+bus.subscribe(JsonlSessionRecorder("logs/sessions"))  # one JSON line per decision
+controller = GuardedController(robot, SafetyGuard(load_builtin_profile("yam_sim")), bus=bus)
 
-# In your simulator's control loop, after the first set_observation:
-current_joints = {
-    "right": observation["state.right_arm"],
-    "left": observation["state.left_arm"],
-}
-action = guarded_get_action(client, guard, current_joints=current_joints)
-robot.play(action)  # only the approved action reaches the controller
+# In your control loop, after the first set_observation:
+report = controller.submit(client.get_action(), observation=observation)
 ```
 
-The measured joint state is mandatory by default (`SafetyConfig.require_current_state=True`): the
-first row of every chunk is step-checked against it, and the action is blocked when it is missing
-or invalid.
+- **APPROVE**: a copy of the validated action is played.
+- **BLOCK**: nothing is played, so the robot keeps its last approved targets; the optional
+  `on_block` hook runs. After `max_consecutive_blocks` (default 3) blocks in a row the controller
+  halts and raises `ControllerHaltedError` until `reset()` is called.
+- Every decision is published as a `SafetyEvent` (decision, findings, risk, latency, action,
+  measured state, executed/halted flags). Subscribers that fail never affect supervision.
+- `read_session(path)` and `list_sessions(directory)` read recorded sessions back.
+
+The measured joint state is taken from `observation["state.right_arm"]` /
+`observation["state.left_arm"]` (or pass `current_joints=` explicitly). It is mandatory by
+default (`SafetyConfig.require_current_state=True`): the first row of every chunk is step-checked
+against it, and the action is blocked when it is missing or invalid.
+
+For a single chunk without a controller, `guarded_get_action(client, guard, observation)` returns
+the approved action or raises `UnsafeActionError`.
 
 Do not call `robot.play(client.get_action())` directly once DreamGuard is in the loop.
 
