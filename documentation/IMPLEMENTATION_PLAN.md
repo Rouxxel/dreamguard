@@ -301,24 +301,59 @@ dreamguard/
 - `MUJOCO_LOG.TXT` (MuJoCo warning log) added to `.gitignore`.
 - Tests: 161 core/sim + 4 backend = 165 passing; ruff clean; backend pylint 9.74.
 
-### Phase 5 — Backend API (free)
+### Phase 5 — Backend API (free) — **FINISHED**
 
 | Method | Route | Purpose |
 |---|---|---|
-| GET | `/` | Health: simulator, SDK, paid-call status |
-| POST | `/api/runs` | Start run (`fake` / `replay` / `dream1`, scenario, prompt) |
+| GET | `/` | Health: simulator, camera, SDK, paid-call status |
+| GET | `/api/runs/catalog` | Sources, faults, cameras, joint names |
+| POST | `/api/runs` | Start run (`fake` / `replay` / `dream1`, prompt, chunk limit) |
 | POST | `/api/runs/{id}/stop` | Stop run |
+| POST | `/api/runs/{id}/reset` | Resume a run halted by repeated blocks |
 | POST | `/api/runs/{id}/faults` | Inject a catalogued fault |
 | GET | `/api/runs/current` | Status and counters |
-| GET | `/api/sessions`, `/api/sessions/{id}` | Session list / replay data (path-confined) |
+| GET | `/api/sessions`, `/api/sessions/{id}` | Session list / paged replay data (path-confined) |
 | GET | `/api/safety/profile` | Active limits |
 | POST | `/api/safety/inspect` | Validate any posted action |
 | GET | `/api/safety/metrics` | PRD §13 metrics |
-| WS | `/ws/events` | Live safety decisions |
+| WS | `/ws/events` | Live safety decisions and run status |
 | GET | `/api/stream/camera/{name}` | MJPEG camera stream |
 
-- [ ] Each route follows the backend conventions (config-driven, rate-limited, model split, service layer)
-- [ ] Backend tests with FastAPI TestClient
+- [x] Each route follows the backend conventions (config-driven, rate-limited, model split, service layer)
+- [x] Backend tests with FastAPI TestClient
+
+**Phase 5 notes**
+- 13 endpoints, one per file in `routers/{runs,sessions,safety,stream}/`; every route's prefix, tag,
+  path and rate limit live in `config_file.json`. Added `GET /api/runs/catalog` and
+  `POST /api/runs/{id}/reset` (needed by the dashboard; a halted run otherwise cannot resume).
+- New config sections: `safety` (profile, blocks before halt), `simulation` (real-time pacing,
+  execution horizon, camera fps/quality, chunk cap), `dream` (paid-call switch); `general_data.json`
+  holds the source, fault, camera and joint catalogs.
+- Services (`src/resources/`): `run_service` (simulator + guard + one active run on a worker thread,
+  halt/reset, fault injection, metrics, inspection, profile), `session_service` (validated,
+  directory-confined session ids), `camera_service` (single background renderer, latest JPEG per
+  camera), `event_broadcaster` (thread-safe fan-out to WebSocket queues, drops oldest for slow
+  clients), `service_errors` + `utils/service_error_handler.py` (errors carry HTTP status codes).
+- Paid calls: `source=dream1` returns 403 unless `dream.allow_paid_calls` is true **and**
+  `DREAMGUARD_ALLOW_PAID=1`; even then it returns 501 until Phase 7. No Dream API call is possible.
+- Core additions: `SafetyEvent.metadata` (injected faults travel with the decision),
+  `FakeDreamClient.last_faults`, `dreamguard.metrics.summarize_events` (shared by run metrics and
+  session summaries: counts, unsafe injected/prevented/missed, false rejections for the scripted
+  source, latency p50/p95/max, violations per check), public `events.json_safe`,
+  `SimRobot.close_thread_renderer()` (OpenGL contexts are released on their own thread, which
+  removed GLFW context warnings).
+- WebSocket security: CORS and SlowAPI do not cover WebSockets, so `/ws/events` checks the Origin
+  header (dashboard origins or same origin; non-browser clients allowed) and closes others with 1008.
+- `inspect` accepts untyped actions so malformed input is answered with an explained BLOCK
+  instead of a 422.
+- Docker: build context moved to the repository root (`backend/.dockerignore` moved to the root
+  `.dockerignore`), image installs the core library with the simulator and renders with OSMesa.
+  Verified: image built, container served health, camera frames and a completed run (test image
+  removed afterwards).
+- Start scripts install the core library (`pip install -e "..[sim]"`) before the backend.
+- Live smoke test (real-time server): scripted run, `workspace` fault blocked (45 workspace
+  findings, 0 false rejections, p50 1.9 ms), 3 MJPEG frames received, run stopped cleanly.
+- Tests: 166 core/sim + 36 backend = 202 passing; ruff clean; backend pylint 9.80.
 
 ### Phase 6 — Dashboard (free)
 

@@ -194,7 +194,16 @@ class SimRobot:
     def clear_interrupt(self) -> None:
         self._interrupt.clear()
 
+    def close_thread_renderer(self) -> None:
+        """Release the calling thread's renderer (OpenGL contexts must be freed on their thread)."""
+        renderer = getattr(self._local, "renderer", None)
+        if renderer is not None:
+            self._local.renderer = None
+            self._renderers.remove(renderer)
+            renderer.close()
+
     def close(self) -> None:
+        """Release renderers; call ``close_thread_renderer`` on worker threads first."""
         for renderer in self._renderers:
             renderer.close()
         self._renderers.clear()

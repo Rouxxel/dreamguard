@@ -78,6 +78,7 @@ class FakeDreamClient:
         self._config: Mapping[str, Any] | None = None
         self._observation: Mapping[str, Any] | None = None
         self._pending_faults: list[str] = []
+        self.last_faults: tuple[str, ...] = ()  # faults applied to the most recent chunk
         self._lock = threading.Lock()
 
     # --- SDK inference surface -----------------------------------------------------------
@@ -102,6 +103,7 @@ class FakeDreamClient:
             self.calls += 1
             action = self._scripted_chunk()
             faults, self._pending_faults = self._pending_faults, []
+            self.last_faults = tuple(faults)
         for fault in faults:
             self._apply_fault(fault, action)
         return action

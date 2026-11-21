@@ -1,8 +1,9 @@
 # DreamGuard Backend
 
-FastAPI service for DreamGuard. It exposes the safety supervisor, simulation runs and safety
-event history to the React dashboard, with rate limiting, structured logging and JSON-based
-configuration.
+FastAPI service for DreamGuard. It runs the MuJoCo bimanual YAM simulator with the DreamGuard
+safety supervisor in the loop, and exposes runs, fault injection, recorded sessions, the safety
+profile, metrics, a live event WebSocket and MJPEG camera streams to the React dashboard, with
+rate limiting, structured logging and JSON-based configuration.
 
 ## Features
 
@@ -21,6 +22,10 @@ backend/
 ├── src/
 │   ├── api_endpoints/              # API route definitions
 │   │   ├── routers/                # One folder per endpoint group, one endpoint per file
+│   │   │   ├── runs/               # start, stop, reset, faults, current, catalog
+│   │   │   ├── sessions/           # list, get (recorded JSONL sessions)
+│   │   │   ├── safety/             # profile, inspect, metrics
+│   │   │   └── stream/             # events WebSocket, MJPEG camera
 │   │   └── root_endpoint.py        # Root / health-check endpoint
 │   ├── core_specs/                 # Core configuration and static data
 │   │   ├── configuration/
@@ -31,10 +36,16 @@ backend/
 │   │       └── data_loader.py      # Loads general_data.json -> data_loader
 │   ├── models/                     # Pydantic models (Base / Create / Update / Entity / Response)
 │   ├── resources/                  # Service layer used by routers
+│   │   ├── run_service.py          # Simulator, guard and the active run (worker thread)
+│   │   ├── session_service.py      # Recorded sessions (validated, directory-confined ids)
+│   │   ├── camera_service.py       # Background renderer for the camera streams
+│   │   ├── event_broadcaster.py    # Worker thread -> WebSocket clients fan-out
+│   │   └── service_errors.py       # Errors carrying their HTTP status code
 │   └── utils/
 │       ├── custom_logger.py        # Logging configuration (log_handler)
 │       ├── limiter.py              # Shared SlowAPI limiter instance
 │       ├── request_limiter.py      # 429 handler for rate-limit exceeded
+│       ├── service_error_handler.py  # Maps service errors to HTTP responses
 │       ├── en_de_crypt.py          # RSA encrypt/decrypt (requires .env keys)
 │       ├── keys_generator.py       # One-off script to generate an RSA key pair
 │       ├── keys_generator_dtrmnstc.py  # Deterministic Ed25519 key pair from a passphrase
@@ -60,7 +71,7 @@ From the repository root:
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,sim]"
 python -m pip install -r backend/requirements.txt
 Copy-Item .env.example .env    # only if .env does not exist yet
 ```
@@ -86,8 +97,10 @@ cd backend
 docker compose up --build
 ```
 
-The container reads secrets from the repository-level `.env` at runtime (`env_file: ../.env`);
-`.env` files are excluded from the image by `.dockerignore`.
+The build context is the repository root (the image installs the DreamGuard core library and
+simulator); the root `.dockerignore` keeps `.env`, logs and tests out of the image. MuJoCo renders
+with OSMesa (software OpenGL) inside the container. The container reads secrets from the
+repository-level `.env` at runtime (`env_file: ../.env`).
 
 ## Configuration
 
@@ -113,9 +126,12 @@ prefix, tag, route and rate-limit values from here rather than hard-coding them.
 
 | Section | Purpose |
 |---|---|
-| `defaults` | Shared paths (general data, repository `.env`) |
+| `defaults` | Shared paths (general data, repository `.env`, sessions directory, dashboard build) |
 | `logging` | Log level, directory, file name prefix |
 | `network` | Uvicorn host, port, workers, reload, proxy headers, CORS origins |
+| `safety` | Active safety profile (`yam_sim`) and blocks in a row before a run halts |
+| `simulation` | Real-time pacing, rows executed per chunk, camera rate/quality, chunk cap per run |
+| `dream` | Paid-call switch (`allow_paid_calls`, plus `DREAMGUARD_ALLOW_PAID=1` in `.env`), checkpoint |
 | `endpoints` | Per-endpoint prefix, tag, route and rate-limit settings |
 
 **Endpoint config shape** (one entry per route):
@@ -186,7 +202,22 @@ Each endpoint group follows the same conventions:
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/` | Health check |
+| `GET` | `/` | Health check: simulator, camera, Dream SDK, paid-call switch |
+| `GET` | `/api/runs/catalog` | Sources, injectable faults, cameras, joint names |
+| `GET` | `/api/runs/current` | Status of the current (or last) run |
+| `POST` | `/api/runs` | Start a run: `fake` (scripted), `replay` (recorded session) or `dream1` (paid; refused unless enabled) |
+| `POST` | `/api/runs/{run_id}/stop` | Stop the run |
+| `POST` | `/api/runs/{run_id}/reset` | Resume a run halted by repeated blocked actions |
+| `POST` | `/api/runs/{run_id}/faults` | Inject a fault into the next scripted chunk |
+| `GET` | `/api/sessions` | Recorded sessions with metrics |
+| `GET` | `/api/sessions/{session_id}` | Paged events of a recorded session |
+| `GET` | `/api/safety/profile` | Active safety profile |
+| `POST` | `/api/safety/inspect` | Evaluate any action without executing it |
+| `GET` | `/api/safety/metrics` | Metrics of the current run |
+| `WS` | `/ws/events` | Live safety events and run status (Origin-checked) |
+| `GET` | `/api/stream/camera/{camera}` | MJPEG stream: `overhead`, `wrist_l`, `wrist_r` |
+
+Run ids are also session ids: every run is recorded to `logs/sessions/<run_id>.jsonl`.
 
 ## Models (`src/models/`)
 
@@ -207,6 +238,7 @@ Recommended Pydantic split for any entity:
 | `custom_logger.py` | `log_handler`: use everywhere instead of `print` |
 | `limiter.py` | Shared `limiter` instance; decorate routes with `@limiter.limit(...)` |
 | `request_limiter.py` | Registered in `main.py` as the global 429 handler |
+| `service_error_handler.py` | Registered in `main.py`; turns `ServiceError`s into JSON responses |
 | `en_de_crypt.py` | `encrypt_in` / `decrypt_out` for RSA-encrypted fields; raises at import if the RSA keys are not set, so import it only where it is needed |
 | `keys_generator.py` | Run once to generate an RSA key pair for `.env` |
 | `keys_generator_dtrmnstc.py` | Reproducible Ed25519 key pair from a passphrase (not compatible with `en_de_crypt.py`) |

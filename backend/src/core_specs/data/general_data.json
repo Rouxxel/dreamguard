@@ -3,5 +3,43 @@
         "project": "DreamGuard",
         "description": "Safety supervisor middleware for Dream-1 robot actions",
         "maintainer": "Sebastian Russo"
-    }
+    },
+
+    "sources": {
+        "fake": {
+            "label": "Scripted (offline)",
+            "description": "Scripted motion from the offline Dream-1 stand-in; supports fault injection",
+            "paid": false
+        },
+        "replay": {
+            "label": "Replay session",
+            "description": "Replays the actions of a recorded session through the guard",
+            "paid": false
+        },
+        "dream1": {
+            "label": "Dream-1 (live)",
+            "description": "Live Dream-1 inference through the Dream Labs API; every chunk is a paid call",
+            "paid": true
+        }
+    },
+
+    "faults": {
+        "joint_limit": {"label": "Joint limit", "expected_check": "joint_limit"},
+        "big_step": {"label": "Big step", "expected_check": "step"},
+        "velocity": {"label": "Velocity spike", "expected_check": "velocity"},
+        "nan": {"label": "NaN value", "expected_check": "action_format"},
+        "gripper": {"label": "Gripper range", "expected_check": "gripper"},
+        "missing_arm": {"label": "Missing arm", "expected_check": "action_format"},
+        "mismatched_lengths": {"label": "Mismatched lengths", "expected_check": "chunk_shape"},
+        "workspace": {"label": "Leave workspace", "expected_check": "workspace"},
+        "separation": {"label": "Grippers collide", "expected_check": "separation"}
+    },
+
+    "cameras": {
+        "overhead": "Overhead",
+        "wrist_l": "Left wrist",
+        "wrist_r": "Right wrist"
+    },
+
+    "joint_names": ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
 }

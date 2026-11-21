@@ -95,8 +95,12 @@ class GuardedController:
         *,
         current_joints: Mapping[str, Sequence[float]] | None = None,
         observation: Mapping[str, Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ) -> SafetyReport:
-        """Inspect one action chunk and play it only if it is approved."""
+        """Inspect one action chunk and play it only if it is approved.
+
+        ``metadata`` is attached to the published event (e.g. which faults were injected).
+        """
         if current_joints is None and observation is not None:
             current_joints = current_joints_from_observation(observation)
         with self._lock:
@@ -133,6 +137,7 @@ class GuardedController:
                         source=self.source,
                         halted=self.halted,
                         error=error,
+                        metadata=dict(metadata or {}),
                     )
                 )
             if self.halted:

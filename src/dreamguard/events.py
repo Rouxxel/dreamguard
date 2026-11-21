@@ -33,15 +33,15 @@ def validate_session_id(session_id: str) -> str:
     return session_id
 
 
-def _plain(value: Any) -> Any:
+def json_safe(value: Any) -> Any:
     """JSON-safe copy: numpy values become Python values, and non-finite floats (which strict
     JSON cannot hold) become the strings "NaN", "Infinity" and "-Infinity"."""
     if hasattr(value, "tolist"):
         value = value.tolist()
     if isinstance(value, Mapping):
-        return {str(k): _plain(v) for k, v in value.items()}
+        return {str(k): json_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_plain(v) for v in value]
+        return [json_safe(v) for v in value]
     if isinstance(value, float) and not math.isfinite(value):
         return "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
     return value
@@ -60,6 +60,7 @@ class SafetyEvent:
     source: str = ""
     halted: bool = False
     error: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def as_dict(self) -> dict[str, Any]:
@@ -71,13 +72,14 @@ class SafetyEvent:
             "executed": self.executed,
             "halted": self.halted,
             "error": self.error,
-            "report": _plain(self.report.as_dict()),
+            "metadata": json_safe(self.metadata),
+            "report": json_safe(self.report.as_dict()),
             "action": {
-                key: _plain(self.action[key])
+                key: json_safe(self.action[key])
                 for key in ("q_r_chunk", "q_l_chunk")
                 if key in self.action
             },
-            "current_joints": _plain(self.current_joints),
+            "current_joints": json_safe(self.current_joints),
         }
 
 

@@ -25,8 +25,9 @@ fi
 echo "Activating virtual environment..."
 source ../.venv/bin/activate
 
-# Install dependencies
+# Install dependencies (DreamGuard core library with the simulator, then the backend)
 echo "Installing dependencies..."
+python -m pip install -e "..[sim]"
 python -m pip install -r requirements.txt
 
 # Environment variables are read from the repository-level .env (loaded by main.py)

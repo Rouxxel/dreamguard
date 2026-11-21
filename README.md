@@ -128,6 +128,19 @@ Injectable faults (each blocked by exactly one check): `joint_limit`, `big_step`
 The `yam_sim` profile requires forward kinematics (workspace and separation checks); construct the
 guard with `SafetyGuard(load_builtin_profile("yam_sim"), forward_kinematics=SimKinematics())`.
 
+## Backend API
+
+`backend/` is a FastAPI service that runs the simulator with DreamGuard in the loop and serves the
+dashboard: runs (scripted, replay; live Dream-1 only when paid calls are explicitly enabled), fault
+injection, recorded sessions, the safety profile, action inspection, metrics, a live event
+WebSocket and MJPEG camera streams. See [backend/README.md](backend/README.md).
+
+```powershell
+python -m pip install -e ".[sim]" -r backend/requirements.txt
+cd backend
+python main.py        # http://127.0.0.1:8000/docs
+```
+
 ## Configure real limits before connecting a simulator
 
 Safety limits are a `SafetyConfig`. The defaults (joint limits of `[-pi, pi]`) are placeholders.

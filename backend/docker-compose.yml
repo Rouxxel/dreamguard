@@ -1,8 +1,9 @@
 services:
   api:
     build:
-      context: .
-      dockerfile: DOCKERFILE
+      # The image also installs the DreamGuard core library from the repository root
+      context: ..
+      dockerfile: backend/DOCKERFILE
     container_name: dreamguard_backend
     env_file: ../.env
     ports:

@@ -27,8 +27,9 @@ REM Activate virtual environment
 echo Activating virtual environment...
 call ..\.venv\Scripts\activate.bat
 
-REM Install dependencies
+REM Install dependencies (DreamGuard core library with the simulator, then the backend)
 echo Installing dependencies...
+python -m pip install -e "..[sim]"
 python -m pip install -r requirements.txt
 
 REM Environment variables are read from the repository-level .env

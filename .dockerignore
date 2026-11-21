@@ -1,0 +1,55 @@
+# Build context is the repository root (see backend/docker-compose.yml)
+
+# Python cache files
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files (secrets are injected at runtime, never baked into the image)
+.env
+.env.*
+**/.env
+
+# Git and CI
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Docker files
+backend/DOCKERFILE
+backend/docker-compose.yml
+.dockerignore
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+
+# Documentation (README.md is kept: pyproject.toml references it)
+documentation/
+AGENTS.md
+
+# Tests and tool caches
+tests/
+backend/tests/
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Logs, sessions and keys
+logs/
+backend/logs/
+*.log
+*.pem
+MUJOCO_LOG.TXT
+
+# Frontend sources and dependencies
+frontend/
+node_modules/

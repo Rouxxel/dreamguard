@@ -1,7 +1,9 @@
 {
     "defaults":{
         "general_data_path":"src/core_specs/data/general_data.json",
-        "env_file_path":"../.env"
+        "env_file_path":"../.env",
+        "sessions_dir":"logs/sessions",
+        "frontend_dist_dir":"../frontend/dist"
     },
 
     "logging":{
@@ -20,6 +22,27 @@
         "cors_origins": ["http://localhost:5173", "http://127.0.0.1:5173"]
     },
 
+    "safety":{
+        "profile":"yam_sim",
+        "max_consecutive_blocks":3
+    },
+
+    "simulation":{
+        "realtime": true,
+        "execution_horizon": 30,
+        "camera_fps": 10,
+        "camera_jpeg_quality": 80,
+        "max_chunks_per_run": 2000
+    },
+
+    "dream":{
+        "allow_paid_calls": false,
+        "allow_paid_calls_env": "DREAMGUARD_ALLOW_PAID",
+        "max_paid_calls_per_run": 0,
+        "checkpoint": "dreamlabs/dream-1-beta",
+        "timeout_ms": 15000
+    },
+
     "endpoints": {
         "root_directory_endpoint":{
             "request_limit":60,
@@ -27,6 +50,99 @@
             "endpoint_prefix": "",
             "endpoint_tag":"health",
             "endpoint_route": "/"
+        },
+
+        "start_run":{
+            "request_limit":30,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/runs",
+            "endpoint_tag":"runs",
+            "endpoint_route": ""
+        },
+        "stop_run":{
+            "request_limit":60,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/runs",
+            "endpoint_tag":"runs",
+            "endpoint_route": "/{run_id}/stop"
+        },
+        "reset_run":{
+            "request_limit":60,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/runs",
+            "endpoint_tag":"runs",
+            "endpoint_route": "/{run_id}/reset"
+        },
+        "inject_fault":{
+            "request_limit":120,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/runs",
+            "endpoint_tag":"runs",
+            "endpoint_route": "/{run_id}/faults"
+        },
+        "get_current_run":{
+            "request_limit":240,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/runs",
+            "endpoint_tag":"runs",
+            "endpoint_route": "/current"
+        },
+        "get_catalog":{
+            "request_limit":60,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/runs",
+            "endpoint_tag":"runs",
+            "endpoint_route": "/catalog"
+        },
+
+        "list_sessions":{
+            "request_limit":120,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/sessions",
+            "endpoint_tag":"sessions",
+            "endpoint_route": ""
+        },
+        "get_session":{
+            "request_limit":120,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/sessions",
+            "endpoint_tag":"sessions",
+            "endpoint_route": "/{session_id}"
+        },
+
+        "get_profile":{
+            "request_limit":60,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/safety",
+            "endpoint_tag":"safety",
+            "endpoint_route": "/profile"
+        },
+        "inspect_action":{
+            "request_limit":120,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/safety",
+            "endpoint_tag":"safety",
+            "endpoint_route": "/inspect"
+        },
+        "get_metrics":{
+            "request_limit":240,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/safety",
+            "endpoint_tag":"safety",
+            "endpoint_route": "/metrics"
+        },
+
+        "events_socket":{
+            "endpoint_prefix": "",
+            "endpoint_tag":"stream",
+            "endpoint_route": "/ws/events"
+        },
+        "camera_stream":{
+            "request_limit":30,
+            "unit_of_time_for_limit":"m",
+            "endpoint_prefix": "/api/stream",
+            "endpoint_tag":"stream",
+            "endpoint_route": "/camera/{camera}"
         }
     }
 }
