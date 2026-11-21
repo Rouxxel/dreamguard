@@ -4,7 +4,8 @@
     "source": "Joint ranges from MuJoCo Menagerie i2rt_yam/yam.xml (MIT, i2rt robotics)",
     "notes": [
         "Joint limits are the model's hard ranges in radians; Dream-1 joint zero conventions must be verified against the first recorded chunk (Phase 7).",
-        "max_joint_step_rad and max_joint_velocity_rad_s are development guardrails, to be tuned with recorded Dream-1 chunks.",
+        "max_joint_step_rad and max_joint_velocity_rad_s are development guardrails; 11 recorded Dream-1 chunks peaked at 0.067 rad/row and 1.35 rad/s.",
+        "gripper_tolerance: Dream-1's smoothed gripper commands undershoot a closed gripper by up to 0.012 (6 of 10 live chunks); up to 0.02 outside [0, 1] is a warning and is clamped by the robot.",
         "Workspace and tool separation require forward kinematics (dreamguard.sim.SimKinematics, grasp_site in the world frame); without it every action is blocked (fail closed).",
         "Workspace: the table area (x -0.15..0.85 m, y -0.75..0.75 m) from 1 cm above the table top (z 0.75 m) up to 1.6 m."
     ],
@@ -13,6 +14,7 @@
         "left":  [[-2.61799, 3.05433], [0.0, 3.66519], [0.0, 3.66519], [-1.5708, 1.5708], [-1.5708, 1.5708], [-2.0944, 2.0944]]
     },
     "gripper_range": [0.0, 1.0],
+    "gripper_tolerance": 0.02,
     "action_hz": 20.0,
     "max_joint_step_rad": 0.35,
     "max_joint_velocity_rad_s": [3.0, 3.0, 3.0, 3.0, 3.0, 3.0],

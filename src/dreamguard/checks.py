@@ -162,19 +162,45 @@ def check_joint_limits(
     return findings
 
 
-def check_gripper(arm: str, rows: Rows, gripper_range: tuple[float, float]) -> list[Finding]:
+def check_gripper(
+    arm: str, rows: Rows, gripper_range: tuple[float, float], tolerance: float = 0.0
+) -> list[Finding]:
+    """Block gripper commands outside the range by more than ``tolerance``.
+
+    Commands outside the range but within the tolerance (e.g. a closed gripper smoothed to -0.01)
+    produce one non-blocking warning per arm for the worst row; the robot clamps them.
+    """
     low, high = gripper_range
-    return [
-        violation(
-            "gripper",
-            f"{arm} row {row_index}: gripper {row[JOINTS_PER_ARM]:.3f} "
-            f"outside [{low:g}, {high:g}]",
-            arm=arm, row=row_index, value=row[JOINTS_PER_ARM],
-            limit=low if row[JOINTS_PER_ARM] < low else high,
+    findings: list[Finding] = []
+    worst: tuple[float, int, float, float] | None = None
+    for row_index, row in enumerate(rows):
+        value = row[JOINTS_PER_ARM]
+        if low <= value <= high:
+            continue
+        bound = low if value < low else high
+        excess = abs(value - bound)
+        if excess > tolerance:
+            findings.append(
+                violation(
+                    "gripper",
+                    f"{arm} row {row_index}: gripper {value:.3f} outside [{low:g}, {high:g}]",
+                    arm=arm, row=row_index, value=value, limit=bound,
+                )
+            )
+        elif worst is None or excess > worst[0]:
+            worst = (excess, row_index, value, bound)
+    if worst is not None:
+        excess, row_index, value, bound = worst
+        findings.append(
+            warning(
+                "gripper",
+                f"{arm} gripper {value:.3f} slightly outside [{low:g}, {high:g}] "
+                f"(within {tolerance:g} tolerance, clamped; row {row_index})",
+                weight=round(MAX_WARNING_RISK * excess / tolerance) if tolerance else 0,
+                arm=arm, row=row_index, value=value, limit=bound,
+            )
         )
-        for row_index, row in enumerate(rows)
-        if not low <= row[JOINTS_PER_ARM] <= high
-    ]
+    return findings
 
 
 def check_steps(

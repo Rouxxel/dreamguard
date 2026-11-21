@@ -103,7 +103,9 @@ class SafetyGuard:
             findings += check_joint_limits(
                 arm, rows, config.joint_limits[arm], config.near_limit_margin_rad
             )
-            findings += check_gripper(arm, rows, config.gripper_range)
+            findings += check_gripper(
+                arm, rows, config.gripper_range, config.gripper_tolerance
+            )
             findings += check_steps(arm, rows, current.get(arm), config.max_joint_step_rad)
             if config.max_joint_velocity_rad_s is not None:
                 findings += check_velocity(

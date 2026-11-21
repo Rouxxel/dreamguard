@@ -8,6 +8,7 @@ const LABELS: Record<string, string> = {
   max_joint_velocity_rad_s: "Max joint velocity (rad/s)",
   near_limit_margin_rad: "Near-limit warning margin (rad)",
   gripper_range: "Gripper range",
+  gripper_tolerance: "Gripper tolerance (warning, clamped)",
   require_current_state: "Measured state required",
   min_rows: "Min rows per chunk",
   max_rows: "Max rows per chunk",

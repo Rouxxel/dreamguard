@@ -33,6 +33,7 @@ class SafetyConfig:
 
     joint_limits: Mapping[str, JointLimits] = field(default_factory=_default_joint_limits)
     gripper_range: tuple[float, float] = (0.0, 1.0)
+    gripper_tolerance: float = 0.0
     max_joint_step_rad: float = 0.35
     max_joint_velocity_rad_s: tuple[float, ...] | None = None
     action_hz: float = 20.0
@@ -58,6 +59,8 @@ class SafetyConfig:
         _require_positive(self.action_hz, "action_hz", errors)
         if not _is_number(self.near_limit_margin_rad) or self.near_limit_margin_rad < 0:
             errors.append("near_limit_margin_rad must be a finite number >= 0")
+        if not _is_number(self.gripper_tolerance) or not 0 <= self.gripper_tolerance <= 0.1:
+            errors.append("gripper_tolerance must be a finite number in [0, 0.1]")
         if self.minimum_tool_separation_m is not None:
             _require_positive(self.minimum_tool_separation_m, "minimum_tool_separation_m", errors)
         for name in ("require_current_state", "require_workspace_check"):

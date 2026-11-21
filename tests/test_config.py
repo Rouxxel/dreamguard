@@ -27,6 +27,8 @@ def test_default_config_is_valid():
         ({"max_joint_step_rad": 0.0}, "max_joint_step_rad"),
         ({"action_hz": -20.0}, "action_hz"),
         ({"near_limit_margin_rad": -0.1}, "near_limit_margin_rad"),
+        ({"gripper_tolerance": -0.01}, "gripper_tolerance"),
+        ({"gripper_tolerance": 0.5}, "gripper_tolerance"),
         ({"gripper_range": (1.0, 0.0)}, "gripper_range"),
         ({"gripper_range": (0.0,)}, "gripper_range"),
         ({"min_rows": 0}, "min_rows"),
@@ -86,6 +88,7 @@ def test_builtin_yam_profile_uses_menagerie_joint_ranges():
     assert list(config.joint_limits["left"]) == YAM_LIMITS
     assert config.action_hz == 20.0
     assert config.max_joint_velocity_rad_s == (3.0,) * 6
+    assert config.gripper_tolerance == 0.02
     assert config.require_current_state
 
 

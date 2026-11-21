@@ -15,7 +15,7 @@ For each `q_r_chunk` and `q_l_chunk` action returned by Dream-1, it checks:
 - configured joint position limits are respected;
 - configured per-row joint step limits are respected;
 - optional per-joint velocity limits (rad/s at the configured `action_hz`) are respected;
-- gripper targets remain in the configured range (default `[0, 1]`);
+- gripper targets remain in the configured range (default `[0, 1]`); with `gripper_tolerance`, tiny overshoots (e.g. a closed gripper smoothed to -0.01) are a warning and are clamped;
 - targets close to a joint limit raise a non-blocking near-limit warning;
 - optional forward-kinematics workspace and end-effector separation checks are applied when you provide robot-specific kinematics.
 

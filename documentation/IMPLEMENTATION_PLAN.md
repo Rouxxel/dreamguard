@@ -403,7 +403,7 @@ dreamguard/
 
 - [x] Free preflight (`policy` + `set_observation`, no `get_action`)
 - [x] Attempt 1: single `get_action`, recorded; verify joint conventions, adjust profile
-- [ ] Attempt 2: short run (~10 chunks), recorded; measure false rejections, tune limits
+- [x] Attempt 2: short run (~10 chunks), recorded; measure false rejections, tune limits
 - [ ] Attempt 3: final demo recording
 - Fallback if credits are unavailable: demo on `fake` + `replay` sources
 
@@ -454,7 +454,24 @@ dreamguard/
 - The SDK warns once per policy that nobody has run `python -m dream.check` / recorded an input
   check; that is for real arms and does not apply to the simulator.
 
-**Waiting for approval:** Attempt 2 (about 10 paid calls).
+**Attempt 2 (approved, done — 10 paid calls)**
+- `fixtures/dream1/20261121T214235Z-5473a8ce.jsonl`: 10 chunks of 48 rows. Round trip 1.84 s for the
+  first call (model warm-up), then 0.36–0.44 s (inference about 0.3 s).
+- With the strict `[0, 1]` gripper range: **4 approved, 6 blocked**. Every block was the right
+  gripper commanded slightly below 0 (as low as -0.012; 23 of 480 rows) while closing: smoothing
+  undershoot of a closed gripper. These are false rejections.
+- All other margins held: max step 0.067 rad/row (limit 0.35), max velocity 1.35 rad/s (limit 3.0),
+  closest joint-limit distance 0.17 rad, lowest grasp site 0.806 m (workspace floor 0.76 m),
+  minimum gripper separation 0.52 m (limit 0.10 m).
+- Tuning (user decision: tolerance band): new `SafetyConfig.gripper_tolerance` (0..0.1, default 0);
+  `yam_sim` uses 0.02. Commands outside the range by at most the tolerance give one non-blocking
+  `gripper` warning per arm (risk ≤ 50) and are clamped by the robot; beyond it they still block.
+  Re-evaluated: **10 of 10 approved** (warnings, risk 10–29), 0 false rejections. Step, velocity,
+  workspace and separation limits unchanged (no false rejections, enough margin to catch faults).
+- The recorded-fixture regression test now covers all 11 live chunks; dashboard profile page shows
+  the gripper tolerance.
+
+**Waiting for approval:** Attempt 3 (final demo recording).
 
 ### Phase 8 — Documentation and submission
 

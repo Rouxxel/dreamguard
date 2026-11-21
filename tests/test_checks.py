@@ -162,3 +162,34 @@ def test_separation_with_incomplete_fk_fails_closed():
     findings = check_separation({"right": [(0, 0, 0)], "left": [None]}, 0.1)
     assert findings[0].check == "separation"
     assert "incomplete" in findings[0].message
+
+
+# --- Gripper tolerance --------------------------------------------------------------------
+
+
+def test_gripper_within_tolerance_is_a_single_warning():
+    rows = [row(gripper=-0.004), row(gripper=-0.012), row(gripper=0.0)]
+    [finding] = check_gripper("right", rows, (0.0, 1.0), tolerance=0.02)
+    assert finding.severity is Severity.WARNING
+    assert finding.row == 1
+    assert finding.weight == 30  # 0.012 of a 0.02 tolerance
+
+
+def test_gripper_beyond_tolerance_still_blocks():
+    findings = check_gripper("right", [row(gripper=-0.05), row(gripper=1.01)], (0.0, 1.0), 0.02)
+    assert [f.severity for f in findings] == [Severity.VIOLATION, Severity.WARNING]
+
+
+def test_gripper_tolerance_is_off_by_default():
+    [finding] = check_gripper("right", [row(gripper=-0.001)], (0.0, 1.0))
+    assert finding.severity is Severity.VIOLATION
+
+
+def test_guard_approves_small_gripper_undershoot_with_tolerance():
+    action = {"q_r_chunk": [row(gripper=-0.01)], "q_l_chunk": [row()]}
+    current = {"right": HOME, "left": HOME}
+    assert not SafetyGuard().inspect(action, current_joints=current).approved
+    tolerant = SafetyGuard(SafetyConfig(gripper_tolerance=0.02))
+    report = tolerant.inspect(action, current_joints=current)
+    assert report.approved
+    assert 0 < report.risk_score <= 50
