@@ -399,12 +399,12 @@ dreamguard/
 - Tests: 24 frontend (Vitest) + 166 core/sim + 38 backend = 228 passing; tsc, ESLint and ruff clean;
   backend pylint 9.80; production build without warnings.
 
-### Phase 7 — Real Dream-1 runs (PAID — each attempt requires approval) — **IN PROGRESS**
+### Phase 7 — Real Dream-1 runs (PAID — each attempt requires approval) — **FINISHED**
 
 - [x] Free preflight (`policy` + `set_observation`, no `get_action`)
 - [x] Attempt 1: single `get_action`, recorded; verify joint conventions, adjust profile
 - [x] Attempt 2: short run (~10 chunks), recorded; measure false rejections, tune limits
-- [ ] Attempt 3: final demo recording
+- [x] Attempt 3: final demo recording
 - Fallback if credits are unavailable: demo on `fake` + `replay` sources
 
 **Phase 7 notes (free part, done)**
@@ -471,7 +471,21 @@ dreamguard/
 - The recorded-fixture regression test now covers all 11 live chunks; dashboard profile page shows
   the gripper tolerance.
 
-**Waiting for approval:** Attempt 3 (final demo recording).
+**Attempt 3 (approved, done — 20 paid calls)**
+- `fixtures/dream1/20261121T215356Z-ed761785.jsonl` (headless, `scripts/dream1_attempt.py`):
+  **11 approved, 9 blocked**. Chunks 1–11 approved (2 gripper-tolerance warnings, then near-limit
+  warnings as the right arm folded toward joint2/joint3's 0 rad hard stop). From chunk 12 Dream-1
+  commanded targets up to 0.0196 rad (1.1°) past that stop (136 of 1920 rows); all 9 blocks are
+  `joint_limit` violations only. Because nothing was played, the measured state stayed the same and
+  Dream-1 repeated the request; the backend would have halted after 3 blocks.
+- Decision (user): **keep hard joint limits strict**. This is a real catch, not a tuning problem.
+- Other margins: lowest grasp site 0.785 m (floor 0.76 m), max velocity 1.73 rad/s (limit 3.0).
+- `tests/test_dream1_fixtures.py` pins the decision for each of the 31 recorded live replies
+  (A×1, A×10, A×11 + B×9) and asserts every block is a `joint_limit` excursion of ≤ 0.02 rad.
+
+**Phase 7 totals:** 31 paid `get_action()` calls (1 + 10 + 20, all approved), plus one approved
+`GET /v1/models` in the Level 2 preflight. All replies are recorded and replay for free.
+Tests: 228 Python + 24 frontend passing.
 
 ### Phase 8 — Documentation and submission
 

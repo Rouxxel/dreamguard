@@ -34,7 +34,7 @@ from dreamguard.sim import SimKinematics, SimRobot
 from dreamguard.sources.dream1 import Dream1Source, PaidCallBudgetExhausted, preflight
 
 FIXTURES_DIR = REPO_ROOT / "fixtures" / "dream1"
-SESSIONS_DIR = REPO_ROOT / "logs" / "sessions"
+SESSIONS_DIR = REPO_ROOT / "backend" / "logs" / "sessions"  # shown on the dashboard
 
 
 def joint_offsets(action: dict, current: dict) -> dict[str, list[float]]:
