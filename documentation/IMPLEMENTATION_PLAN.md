@@ -172,14 +172,25 @@ dreamguard/
 - `docker compose config` validates; the Docker image was not built.
 - Results: 11 tests passing (7 core + 4 backend), ruff clean, backend serves `/` and `/docs`.
 
-### Phase 1 — Safety defect fixes (free)
+### Phase 1 — Safety defect fixes (free) — **FINISHED**
 
-- [ ] D1 validate `current_joints` (length, numeric, finite) → BLOCK on failure
-- [ ] D2 `require_current_state = True` (fail closed); row 0 always checked against current state
-- [ ] D3 accept numpy scalars / `numbers.Real`, reject `bool`
-- [ ] D4 configurable `min_rows` / `max_rows`; both arms must share H
-- [ ] Missing tests: workspace out of bounds, required FK missing, FK raises, separation violated, FK non-finite
-- [ ] Fix demo literal `\n` output
+- [x] D1 validate `current_joints` (length, numeric, finite) → BLOCK on failure
+- [x] D2 `require_current_state = True` (fail closed); row 0 always checked against current state
+- [x] D3 accept numpy scalars / `numbers.Real`, reject `bool`
+- [x] D4 configurable `min_rows` / `max_rows`; both arms must share H
+- [x] Missing tests: workspace out of bounds, required FK missing, FK raises, separation violated, FK non-finite
+- [x] Fix demo literal `\n` output
+
+**Phase 1 notes**
+- New `SafetyConfig` fields: `require_current_state=True`, `min_rows=1`, `max_rows=200`.
+  Calling `inspect()` / `approve()` without `current_joints` now blocks unless
+  `require_current_state=False` is set explicitly. README integration snippet updated accordingly.
+- Shared helpers `_as_number` / `_as_vector` validate action rows and the measured state identically
+  (`numbers.Real` accepts Python and NumPy scalars; `bool` and `np.bool_` are rejected).
+- Additional demo defect found and fixed: both arms shared the same row lists, so modifying the right
+  arm also changed the left arm (the demo reported a left-arm violation that did not exist).
+- Tests: 36 core guard/demo tests (was 7) + 4 backend = 40 passing; ruff clean.
+  The original D1–D4 reproductions now behave correctly (D1, D2, D4 blocked; D3 approved).
 
 ### Phase 2 — Safety engine restructure (free)
 

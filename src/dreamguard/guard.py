@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from math import isfinite, sqrt
+from numbers import Real
 from typing import Any
 
 Vector3 = tuple[float, float, float]
@@ -20,6 +21,9 @@ class SafetyConfig:
         }
     )
     max_joint_step_rad: float = 0.35
+    require_current_state: bool = True
+    min_rows: int = 1
+    max_rows: int = 200
     require_workspace_check: bool = False
     workspace_min_m: Vector3 = (-1.0, -1.0, 0.0)
     workspace_max_m: Vector3 = (1.0, 1.0, 1.5)
@@ -48,27 +52,33 @@ class UnsafeActionError(RuntimeError):
         super().__init__("DreamGuard blocked the action: " + "; ".join(report.findings))
 
 
+def _as_number(raw: Any, label: str) -> float:
+    # numbers.Real covers Python and NumPy numeric scalars; bool and np.bool_ are rejected.
+    if isinstance(raw, bool) or not isinstance(raw, Real):
+        raise ValueError(f"{label} is not numeric")  # noqa: TRY004
+    number = float(raw)
+    if not isfinite(number):
+        raise ValueError(f"{label} is not finite")
+    return number
+
+
+def _as_vector(value: Any, length: int, label: str, description: str) -> list[float]:
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    if not isinstance(value, (list, tuple)) or len(value) != length:
+        raise ValueError(f"{label} must contain {length} values: {description}")
+    return [_as_number(raw, f"{label}[{index}]") for index, raw in enumerate(value)]
+
+
 def _as_rows(value: Any, key: str) -> list[list[float]]:
     if hasattr(value, "tolist"):
         value = value.tolist()
     if not isinstance(value, (list, tuple)) or not value:
         raise ValueError(f"{key} must be a non-empty list of action rows")
-    rows: list[list[float]] = []
-    for row_index, row in enumerate(value):
-        if hasattr(row, "tolist"):
-            row = row.tolist()
-        if not isinstance(row, (list, tuple)) or len(row) != 7:
-            raise ValueError(f"{key}[{row_index}] must contain 7 values: 6 joints + gripper")
-        converted: list[float] = []
-        for column, raw in enumerate(row):
-            if isinstance(raw, bool) or not isinstance(raw, (int, float)):
-                raise ValueError(f"{key}[{row_index}][{column}] is not numeric")  # noqa: TRY004
-            number = float(raw)
-            if not isfinite(number):
-                raise ValueError(f"{key}[{row_index}][{column}] is not finite")
-            converted.append(number)
-        rows.append(converted)
-    return rows
+    return [
+        _as_vector(row, 7, f"{key}[{row_index}]", "6 joints + gripper")
+        for row_index, row in enumerate(value)
+    ]
 
 
 class SafetyGuard:
@@ -109,6 +119,33 @@ class SafetyGuard:
         if findings:
             return SafetyReport(False, 100, tuple(findings), checked_rows)
 
+        lengths = {arm: len(rows) for arm, rows in parsed.items()}
+        if lengths["right"] != lengths["left"]:
+            findings.append(
+                f"Arm chunks have different lengths: right={lengths['right']}, "
+                f"left={lengths['left']} rows"
+            )
+        elif not self.config.min_rows <= checked_rows <= self.config.max_rows:
+            findings.append(
+                f"Chunk has {checked_rows} rows; allowed range is "
+                f"[{self.config.min_rows}, {self.config.max_rows}] rows"
+            )
+
+        current: dict[str, list[float]] = {}
+        for arm in ("right", "left"):
+            raw_state = current_joints.get(arm) if current_joints else None
+            if raw_state is None:
+                if self.config.require_current_state:
+                    findings.append(f"Current {arm} joint state is required but missing")
+                continue
+            try:
+                current[arm] = _as_vector(raw_state, 6, f"Current {arm} joint state", "6 joints")
+            except ValueError as exc:
+                findings.append(str(exc))
+
+        if findings:
+            return SafetyReport(False, 100, tuple(findings), checked_rows)
+
         fk_positions: dict[str, list[Vector3]] = {"right": [], "left": []}
 
         for arm, rows in parsed.items():
@@ -117,12 +154,8 @@ class SafetyGuard:
                 findings.append(f"No valid six-joint limits configured for {arm} arm")
                 continue
 
-            previous: Sequence[float] | None = None
-            if current_joints and arm in current_joints:
-                previous = current_joints[arm]
-                if len(previous) != 6:
-                    findings.append(f"Current {arm} joint state must contain six values")
-                    previous = None
+            # Row 0 is always compared against the measured state when it is available.
+            previous: Sequence[float] | None = current.get(arm)
 
             for row_index, row in enumerate(rows):
                 joints, gripper = row[:6], row[6]

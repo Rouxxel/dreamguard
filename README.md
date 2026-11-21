@@ -9,6 +9,8 @@ For each `q_r_chunk` and `q_l_chunk` action returned by Dream-1, it checks:
 - required action chunks exist;
 - each chunk is a non-empty sequence of rows;
 - each row contains six joint targets plus one gripper target;
+- both arm chunks have the same number of rows, within the configured `min_rows` / `max_rows`;
+- the measured joint state is present and valid, and the first row is step-checked against it;
 - all values are finite numbers;
 - configured joint position limits are respected;
 - configured per-row joint step limits are respected;
@@ -73,9 +75,17 @@ from dreamguard.guard import SafetyConfig, SafetyGuard
 guard = SafetyGuard(SafetyConfig())
 
 # In your simulator's control loop, after the first set_observation:
-action = guarded_get_action(client, guard)
+current_joints = {
+    "right": observation["state.right_arm"],
+    "left": observation["state.left_arm"],
+}
+action = guarded_get_action(client, guard, current_joints=current_joints)
 robot.play(action)  # only the approved action reaches the controller
 ```
+
+The measured joint state is mandatory by default (`SafetyConfig.require_current_state=True`): the
+first row of every chunk is step-checked against it, and the action is blocked when it is missing
+or invalid.
 
 Do not call `robot.play(client.get_action())` directly once DreamGuard is in the loop.
 
