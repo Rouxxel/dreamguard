@@ -10,7 +10,7 @@ export function FaultPanel({ catalog, run }: { catalog: Catalog | undefined; run
     <div>
       <p className="mb-2 text-xs text-slate-400">
         {enabled
-          ? "Make the next scripted chunk unsafe. DreamGuard must block it before the robot moves."
+          ? "Each click makes one upcoming scripted chunk unsafe. DreamGuard must block it before the robot moves; three in a row halt the run."
           : "Start a scripted (offline) run to inject faults."}
       </p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">

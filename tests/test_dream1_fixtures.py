@@ -14,6 +14,10 @@ EXPECTED = {
     "20261121T213830Z-b07e9f08": "A",
     "20261121T214235Z-5473a8ce": "AAAAAAAAAA",
     "20261121T215356Z-ed761785": "AAAAAAAAAAA" + "BBBBBBBBB",
+    # Live runs started from the backend/dashboard (Phase 8 follow-up)
+    "20261122T063104Z-bbb4e0df": "A" * 5,
+    "20261122T063409Z-f0583467": "A" * 5,
+    "20261122T063541Z-f8204253": "A" * 20,
 }
 
 

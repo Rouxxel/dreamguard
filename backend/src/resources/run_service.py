@@ -143,6 +143,7 @@ class RunManager:  # pylint: disable=too-many-instance-attributes
                 self._events.append(data)
                 self._status["chunks"] = len(self._events)
         broadcaster.publish({"type": "event", "event": data})
+        broadcaster.publish({"type": "run", "run": self.status()})
 
     def metrics(self) -> dict[str, Any]:
         with self._lock:
@@ -152,7 +153,7 @@ class RunManager:  # pylint: disable=too-many-instance-attributes
 
     # --- Runs ------------------------------------------------------------------------------
 
-    def _make_client(self, source: str, replay_session_id: Optional[str]) -> Any:
+    def _make_client(self, source: str, replay_session_id: Optional[str], run_id: str) -> Any:
         if source == "fake":
             client = FakeDreamClient(action_hz=self.profile.action_hz)
         elif source == "replay":
@@ -171,23 +172,27 @@ class RunManager:  # pylint: disable=too-many-instance-attributes
                     "Paid Dream-1 calls are disabled. They require dream.allow_paid_calls=true in "
                     "config_file.json and DREAMGUARD_ALLOW_PAID=1 in .env, approved per run."
                 )
-            return self._make_dream1_client()
+            return self._make_dream1_client(run_id)
         else:
             raise ServiceError(f"Unknown source {source!r}; expected one of {', '.join(SOURCES)}")
         if source != "dream1":
             client.policy({"checkpoint": f"dreamguard-{source}"})
         return client
 
-    def _make_dream1_client(self) -> Dream1Source:
-        """Live Dream-1 client with a hard budget of paid calls; every reply is recorded."""
+    def _make_dream1_client(self, run_id: str) -> Dream1Source:
+        """Live Dream-1 client with a hard paid-call budget; replies are recorded under the run id.
+
+        The policy is opened on the run thread (``_open_policy``): it can take tens of seconds.
+        """
         dream_cfg = config_loader["dream"]
         budget = dream_cfg["max_paid_calls_per_run"]
         if not isinstance(budget, int) or budget < 1:
             raise PaidCallsDisabledError(
                 "dream.max_paid_calls_per_run must be at least 1 to allow a paid run"
             )
-        client = Dream1Source(
+        return Dream1Source(
             max_calls=budget,
+            session_id=run_id,
             fixtures_dir=resolve_backend_path(dream_cfg["fixtures_dir"]),
             config=policy_config(
                 checkpoint=dream_cfg["checkpoint"],
@@ -196,13 +201,15 @@ class RunManager:  # pylint: disable=too-many-instance-attributes
                 execution_horizon=self.robot.execution_horizon,
             ),
         )
-        try:
-            #Opens the policy: one GET /v1/models request (model listing), no inference
-            client.policy()
-        except Exception as exc:
-            client.close()
-            raise ServiceError(f"Dream-1 policy could not be opened: {exc}") from exc
-        return client
+
+    @staticmethod
+    def _open_policy(client: Any) -> None:
+        """Open a live policy: one GET /v1/models request (model listing), no inference."""
+        if isinstance(client, Dream1Source):
+            try:
+                client.policy()
+            except Exception as exc:
+                raise ServiceError(f"Dream-1 policy could not be opened: {exc}") from exc
 
     def start_run(
         self,
@@ -214,8 +221,8 @@ class RunManager:  # pylint: disable=too-many-instance-attributes
         with self._lock:
             if self._status["state"] in ACTIVE_STATES:
                 raise ConflictError(f"Run {self._status['run_id']} is still active; stop it first")
-            client = self._make_client(source, replay_session_id)
             run_id = new_session_id()
+            client = self._make_client(source, replay_session_id, run_id)
             self.robot.reset()
             self._client = client
             self._controller = GuardedController(
@@ -244,6 +251,7 @@ class RunManager:  # pylint: disable=too-many-instance-attributes
         needs_frames = not isinstance(client, (FakeDreamClient, ReplayDreamClient))
         final_state, error = "completed", None
         try:
+            self._open_policy(client)
             for _ in range(limit):
                 if self._stop.is_set():
                     final_state = "stopped"

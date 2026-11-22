@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import { api } from "./client";
 import type { RunCreate } from "./types";
@@ -22,12 +23,14 @@ export const useProfile = () =>
 export const useCurrentRun = () =>
   useQuery({ queryKey: queryKeys.currentRun, queryFn: api.currentRun, refetchInterval: 5000 });
 
-export const useMetrics = (live: boolean) =>
-  useQuery({
-    queryKey: queryKeys.metrics,
-    queryFn: api.metrics,
-    refetchInterval: live ? 1000 : false,
-  });
+/** Refetched whenever a new decision arrives, so the cards always match the decision feed. */
+export const useMetrics = (latestSequence: number | undefined) => {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (latestSequence !== undefined) void queryClient.invalidateQueries({ queryKey: queryKeys.metrics });
+  }, [latestSequence, queryClient]);
+  return useQuery({ queryKey: queryKeys.metrics, queryFn: api.metrics });
+};
 
 export const useSessions = () => useQuery({ queryKey: queryKeys.sessions, queryFn: api.sessions });
 

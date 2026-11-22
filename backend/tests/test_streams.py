@@ -47,3 +47,18 @@ def test_camera_stream_returns_mjpeg_frames(client):
 
 def test_unknown_camera_is_404(client):
     assert client.get("/api/stream/camera/basement").status_code == 404
+def test_events_socket_pushes_run_progress_after_each_decision(client):
+    with client.websocket_connect("/ws/events") as socket:
+        socket.receive_json()
+        client.post("/api/runs", json={"source": "fake", "max_chunks": 2})
+        messages = []
+        while sum(m["type"] == "event" for m in messages) < 2:
+            messages.append(socket.receive_json())
+        messages.append(socket.receive_json())
+        after_events = [
+            m["run"]["chunks"] for i, m in enumerate(messages)
+            if m["type"] == "run" and i > 0 and messages[i - 1]["type"] == "event"
+        ]
+        assert after_events[:2] == [1, 2]
+
+

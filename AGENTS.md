@@ -26,6 +26,8 @@ cd backend; ..\.venv\Scripts\python main.py             # http://127.0.0.1:8000/
 cd frontend; npm install
 npm run typecheck; npm run lint; npm test; npm run build   # build is served at /dashboard/
 npm run dev                                                # http://localhost:5173, backend on :8000
+# CI's Node 22 ships npm 10; npm 11 can write lock files npm 10's `npm ci` rejects. After any
+# dependency change, check from a copy of package.json + package-lock.json: npx -y npm@10.9.10 ci
 cd backend; ..\.venv\Scripts\python export_openapi.py; cd ../frontend; npm run gen:api   # after API changes
 ```
 

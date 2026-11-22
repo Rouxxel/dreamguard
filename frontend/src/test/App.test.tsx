@@ -52,8 +52,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-function renderApp() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderApp(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={client}>
       <App />
@@ -77,6 +76,22 @@ describe("App", () => {
     });
     expect(await screen.findByText(/injected: joint_limit/)).toBeInTheDocument();
     expect(screen.getAllByText("BLOCK").length).toBeGreaterThan(0);
+  });
+
+  it("refetches metrics for every new decision, including the one that halts the run", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderApp(client);
+    act(() => FakeSocket.last?.onopen?.());
+    const metricCalls = () =>
+      vi.mocked(fetch).mock.calls.filter(([path]) => String(path).startsWith("/api/safety/metrics")).length;
+    await vi.waitFor(() => expect(client.getQueryData(["metrics"])).toBeDefined());
+    expect(metricCalls()).toBe(1);
+
+    act(() => {
+      FakeSocket.last?.emit({ type: "run", run: makeRun({ state: "halted" }) });
+      FakeSocket.last?.emit({ type: "event", event: makeEvent(1, { blocked: true, findings: [JOINT_LIMIT_FINDING] }) });
+    });
+    await vi.waitFor(() => expect(metricCalls()).toBe(2));
   });
 
   it("reports a disconnected live stream", () => {

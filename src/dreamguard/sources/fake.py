@@ -102,7 +102,7 @@ class FakeDreamClient:
                 raise FakeClientError("get_action() called before any set_observation()")
             self.calls += 1
             action = self._scripted_chunk()
-            faults, self._pending_faults = self._pending_faults, []
+            faults = [self._pending_faults.pop(0)] if self._pending_faults else []
             self.last_faults = tuple(faults)
         for fault in faults:
             self._apply_fault(fault, action)
@@ -126,7 +126,7 @@ class FakeDreamClient:
     # --- Fault injection -----------------------------------------------------------------
 
     def inject(self, fault: str) -> None:
-        """Make the next chunk unsafe in the named way (see ``FAULTS``)."""
+        """Queue a fault (see ``FAULTS``); each queued fault makes one successive chunk unsafe."""
         if fault not in FAULTS:
             raise ValueError(f"Unknown fault {fault!r}; expected one of {', '.join(FAULTS)}")
         with self._lock:

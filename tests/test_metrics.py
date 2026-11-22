@@ -70,3 +70,17 @@ def test_fake_client_reports_faults_of_last_chunk():
     assert client.last_faults == ("gripper",)
     client.get_action()
     assert client.last_faults == ()
+
+
+def test_fake_client_applies_queued_faults_one_per_chunk():
+    client = FakeDreamClient()
+    client.policy({})
+    client.set_observation({}, {"state.right_arm": [0.0, 1.047, 1.047, 0, 0, 0],
+                                "state.left_arm": [0.0, 1.047, 1.047, 0, 0, 0]})
+    for fault in ("gripper", "nan", "workspace"):
+        client.inject(fault)
+    seen = []
+    for _ in range(4):
+        client.get_action()
+        seen.append(client.last_faults)
+    assert seen == [("gripper",), ("nan",), ("workspace",), ()]

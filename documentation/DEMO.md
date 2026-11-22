@@ -6,6 +6,33 @@ without a network connection.
 
 ## Screenshots
 
+### Dashboard
+
+**Live page**: a scripted run with two injected faults blocked; the "Why" panel shows
+the workspace violation that never reached the robot.
+
+![Live dashboard](screenshots/dashboard_live.png)
+
+**Halt**: three blocked chunks in a row halt the run until an operator resumes it.
+
+![Halted run](screenshots/dashboard_halted.png)
+
+**Sessions page**: the recorded live Dream-1 session stepped to its first block, a real
+joint-limit violation (joint 2 commanded below 0 rad).
+
+![Sessions and replay](screenshots/dashboard_sessions.png)
+
+**Live Dream-1 run**: started from the dashboard with real Dream-1 driving the arms. Five
+paid calls; every chunk was approved and executed.
+
+![Live Dream-1 run](screenshots/dashboard_live_dream1.png)
+
+**Safety profile**: the active `yam_sim` limits.
+
+![Safety profile](screenshots/dashboard_profile.png)
+
+### Simulator cameras
+
 | Overhead camera (home) | Overhead camera (mid-motion) |
 |---|---|
 | ![home](screenshots/home_overhead.png) | ![mid](screenshots/mid_overhead.png) |
@@ -51,7 +78,8 @@ Suggested flow on the **Live** page:
    draws, metrics count up.
 3. Inject `joint_limit`, then `workspace` — each appears as a BLOCK with the
    fault tag; open a decision to show the "Why" panel (findings, executed=no).
-4. Inject three faults in a row — the run halts; show the halt banner and the
+4. Click three fault buttons quickly; each one is queued for its own chunk, so
+   three blocks in a row halt the run. Show the halt banner and the
    "Reviewed – resume run" button.
 5. **Sessions** page: pick a recorded session, drag the slider through the
    decisions, start a replay run.

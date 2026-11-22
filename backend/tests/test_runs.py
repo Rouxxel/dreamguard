@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from conftest import wait_for
 
@@ -71,15 +73,24 @@ def test_unknown_fault_is_rejected(client):
     client.post(f"/api/runs/{run_id}/stop")
 
 
-def test_faults_injected_together_hit_the_same_chunk(client):
+def test_faults_injected_together_hit_successive_chunks(client):
     run_id = client.post("/api/runs", json={"source": "fake"}).json()["run_id"]
     client.post(f"/api/runs/{run_id}/faults", json={"fault": "nan"})
     client.post(f"/api/runs/{run_id}/faults", json={"fault": "gripper"})
-    wait_for(lambda: client.get("/api/safety/metrics").json()["summary"]["unsafe_injected"])
+    wait_for(lambda: client.get("/api/safety/metrics").json()["summary"]["unsafe_injected"] == 2)
     client.post(f"/api/runs/{run_id}/stop")
     events = client.get(f"/api/sessions/{run_id}").json()["events"]
     faulted = [e["metadata"]["injected_faults"] for e in events if e["metadata"]]
-    assert faulted == [["nan", "gripper"]]
+    assert faulted == [["nan"], ["gripper"]]
+
+
+def test_three_quick_fault_clicks_halt_the_run(client):
+    run_id = client.post("/api/runs", json={"source": "fake"}).json()["run_id"]
+    for fault in ("nan", "big_step", "separation"):
+        client.post(f"/api/runs/{run_id}/faults", json={"fault": fault})
+    halted = wait_for(lambda: current(client)["state"] == "halted" and current(client))
+    assert halted["consecutive_blocks"] == 3
+    client.post(f"/api/runs/{run_id}/stop")
 
 
 def test_blocked_actions_halt_the_run_until_reset(client):
@@ -129,12 +140,16 @@ class FakeSdkClient:
 
 
 @pytest.fixture()
-def paid_enabled(monkeypatch, tmp_path):
+def paid_enabled(client, monkeypatch, tmp_path):
+    from dreamguard.sim.scene import CAMERAS
     from dreamguard.sources import dream1
     from src.core_specs.configuration.config_loader import config_loader
+    from src.resources.run_service import get_manager
 
     FakeSdkClient.instances = []
     monkeypatch.setattr(dream1, "CLIENT_FACTORY", FakeSdkClient)
+    #The fake SDK ignores pixels; stub frames so live-run tests also pass without OpenGL
+    monkeypatch.setattr(get_manager().robot, "frames", lambda: {f"video.{r}": "" for r in CAMERAS})
     monkeypatch.setenv("DREAMGUARD_ALLOW_PAID", "1")
     monkeypatch.setitem(config_loader["dream"], "allow_paid_calls", True)
     monkeypatch.setitem(config_loader["dream"], "max_paid_calls_per_run", 2)
@@ -165,6 +180,7 @@ def test_paid_run_needs_a_positive_budget(client, paid_enabled, monkeypatch):
 def test_live_run_stops_at_the_paid_call_budget(client, paid_enabled):
     response = client.post("/api/runs", json={"source": "dream1", "prompt": "tidy up"})
     assert response.status_code == 201
+    run_id = response.json()["run_id"]
     status = finish(client)
     assert status["state"] == "completed"
     assert status["paid_calls"] == 2
@@ -176,11 +192,47 @@ def test_live_run_stops_at_the_paid_call_budget(client, paid_enabled):
     assert sdk.observations[0] == (["video.overhead", "video.wrist_l", "video.wrist_r"], "tidy up")
 
     fixtures = list(paid_enabled.glob("*.jsonl"))
-    assert len(fixtures) == 1
+    assert [f.stem for f in fixtures] == [run_id]
     assert len(fixtures[0].read_text(encoding="utf-8").splitlines()) == 2
     summary = client.get("/api/safety/metrics").json()["summary"]
     assert summary["sources"] == ["dream1"]
     assert summary["approved"] == 2
+
+
+class SlowPolicySdkClient(FakeSdkClient):
+    def policy(self, config):
+        time.sleep(1.5)
+        super().policy(config)
+
+
+class BrokenPolicySdkClient(FakeSdkClient):
+    def policy(self, config):
+        raise ConnectionError("gateway unreachable")
+
+
+def test_opening_the_live_policy_does_not_block_the_api(client, paid_enabled, monkeypatch):
+    from dreamguard.sources import dream1
+
+    monkeypatch.setattr(dream1, "CLIENT_FACTORY", SlowPolicySdkClient)
+    started = time.monotonic()
+    response = client.post("/api/runs", json={"source": "dream1"})
+    assert response.status_code == 201
+    assert time.monotonic() - started < 1.0
+    assert current(client)["state"] == "running"
+    assert time.monotonic() - started < 1.0
+    assert finish(client)["state"] == "completed"
+
+
+def test_live_policy_failure_ends_the_run_with_an_error(client, paid_enabled, monkeypatch):
+    from dreamguard.sources import dream1
+
+    monkeypatch.setattr(dream1, "CLIENT_FACTORY", BrokenPolicySdkClient)
+    assert client.post("/api/runs", json={"source": "dream1"}).status_code == 201
+    status = finish(client)
+    assert status["state"] == "error"
+    assert "Dream-1 policy could not be opened" in status["error"]
+    assert "gateway unreachable" in status["error"]
+    assert status["paid_calls"] == 0
 
 
 def test_replay_of_recorded_session(client):

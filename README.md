@@ -31,12 +31,15 @@ decision is logged with its findings, and the run halts after repeated blocks.
 See [documentation/ARCHITECTURE.md](documentation/ARCHITECTURE.md) for the full
 component breakdown.
 
+![DreamGuard dashboard](documentation/screenshots/dashboard_halted.png)
+
 ## Verified against real Dream-1 output
 
 DreamGuard was run against the live Dream-1 policy driving the local YAM
-simulator: **31 paid inference calls, 11 approved and 9 blocked in the final
-20-call run** — every block a real joint-limit violation caught before
-execution, with zero false rejections under the tuned profile. All replies are
+simulator: **61 paid inference calls**, from the attempt script and from live runs
+started in the dashboard. In one 20-call run DreamGuard approved 11 chunks and
+blocked 9; every block was a real joint-limit violation caught before execution.
+There were zero false rejections under the tuned profile. All replies are
 recorded under `fixtures/dream1/` and replay offline for free.
 
 ## What DreamGuard checks

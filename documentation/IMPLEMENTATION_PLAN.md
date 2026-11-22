@@ -507,3 +507,46 @@ Tests: 228 Python + 24 frontend passing.
   session) plus a 90-second video storyboard. Six rendered camera screenshots under
   `documentation/screenshots/` (no headless browser available, so dashboard captures are
   left to the reader's own run).
+
+**Phase 8 follow-up: dashboard screenshots and two bugs they exposed**
+- Four dashboard screenshots (live, halted, sessions, profile) captured with headless Chrome over
+  the DevTools protocol, with no new dependencies. Embedded in `DEMO.md` and the README.
+- Bug: the run panel showed "0 chunks · 0 rows" during a run. The backend updated the chunk count
+  per decision but only broadcast the event, not the run status. It now broadcasts the run status
+  after each decision (test: `test_events_socket_pushes_run_progress_after_each_decision`).
+- Bug: the halt couldn't be triggered from the dashboard. A blocked chunk isn't played, so the
+  scripted source returned the next clean chunk within milliseconds, resetting the
+  consecutive-block count, and faults clicked together were merged into one chunk. Queued faults
+  now apply one per chunk, so three quick clicks halt the run (tests in `test_metrics.py`,
+  `test_sim.py`, `backend/tests/test_runs.py`; the old test pinning the merge behaviour was
+  replaced).
+- Bug: the metrics cards lagged the decision feed (polled only while `running`, so the blocks that
+  halt a run were never fetched). Metrics now refetch on every new decision (frontend test added).
+- Live backend/dashboard test (user-approved, 30 paid calls). Before this, the `dream1` run path
+  had only been tested with a fake SDK. Three runs: 5 + 5 + 20 calls. Every chunk was approved
+  and executed, each run stopped exactly at its budget, and the paid-call counter and decisions
+  streamed to the dashboard. Two bugs found and fixed:
+  - Starting a live run blocked for ~29 s. `policy()` was opened inside the HTTP request while
+    holding the run-manager lock, which also froze `/api/runs/current`. The policy now opens on
+    the run thread: the request returns in 0.02 s, and a failed open ends the run in `error` with
+    the reason.
+  - The recorded fixture had a different id from the dashboard session, so the two couldn't be
+    matched. `Dream1Source` now records under the run id.
+  - Tests: `test_opening_the_live_policy_does_not_block_the_api`,
+    `test_live_policy_failure_ends_the_run_with_an_error`, and the fixture name asserted in
+    `test_live_run_stops_at_the_paid_call_budget`. The 30 new replies are pinned in
+    `tests/test_dream1_fixtures.py`. The first run's fixture (`…063104Z-bbb4e0df`) predates the
+    id fix.
+  - Halt-after-3 was not triggered by real output in these runs (Dream-1 produced no blocks).
+    The halt is source-agnostic and covered by tests and by the scripted dashboard run.
+  - Paid calls are switched off again in `config_file.json`.
+- Totals: 61 paid `get_action()` calls (31 Phase 7 + 30 here). Tests: 237 Python + 25 frontend.
+- CI fixes:
+  - `npm ci` failed on CI. Local npm 11 left `@emnapi/core` / `@emnapi/runtime@2.0.0-beta.2` out of
+    the lock file; they're optional dependencies of rolldown's WebAssembly fallback. CI's npm 10
+    rejects that lock. Reproduced with `npx npm@10.9.10 ci`, then filled in with
+    `npm install --package-lock-only` under npm 10: two entries added, no version changes, both
+    published 2026-10-15. Verified with `npm ci` on npm 10 and npm 11.
+  - `test_live_run_stops_at_the_paid_call_budget` failed on the Windows runner, which has no
+    OpenGL: live runs render camera frames for Dream-1. The live-run tests use a fake SDK that
+    ignores pixels, so they now stub `robot.frames()`. Verified with rendering forced to fail.

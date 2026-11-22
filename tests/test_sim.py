@@ -268,3 +268,13 @@ def test_replay_returns_independent_copies():
     replay = ReplayDreamClient([{"q_r_chunk": [[0.0] * 7], "q_l_chunk": [[0.0] * 7]}], loop=True)
     replay.get_action()["q_r_chunk"][0][0] = 9.0
     assert replay.get_action()["q_r_chunk"][0][0] == 0.0
+
+
+def test_three_queued_faults_halt_the_controller(robot, guard, client):
+    controller = GuardedController(robot, guard, max_consecutive_blocks=3)
+    for fault in ("nan", "big_step", "separation"):
+        client.inject(fault)
+    result = run_loop(client, robot, controller, chunks=5, render_frames=False)
+    assert result.halted
+    assert [r.decision for r in result.reports] == [Decision.BLOCK] * 3
+    assert robot.rows_played == 0

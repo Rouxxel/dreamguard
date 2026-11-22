@@ -15,10 +15,10 @@ import { Panel } from "../components/ui";
 export function LivePage({ stream }: { stream: StreamState }) {
   const catalog = useCatalog();
   const profile = useProfile();
-  const metrics = useMetrics(stream.run?.state === "running");
+  const latest = stream.events.at(-1);
+  const metrics = useMetrics(latest?.sequence);
   const [selected, setSelected] = useState<number | null>(null);
 
-  const latest = stream.events.at(-1);
   const selectedEvent = stream.events.find((e) => e.sequence === selected) ?? latest;
   const limits = profile.data?.config.joint_limits as Record<string, number[][]> | undefined;
 
