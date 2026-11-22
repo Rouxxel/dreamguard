@@ -255,11 +255,11 @@ DreamGuard should record:
 - Failed checks.
 - Relevant validation details.
 
-The initial version can log to the console. SQLite can be introduced as a later improvement.
+The initial version can log to the console. JSONL session files (one JSON line per decision) are implemented; SQLite can be introduced as a later improvement.
 
 ### FR-10: Safety replay
 
-A later version should allow developers to replay recorded actions and inspect why each action was approved or rejected.
+Recorded sessions can be replayed through the guard and stepped through decision-by-decision in the dashboard, so developers can inspect why each action was approved or rejected.
 
 ---
 
@@ -317,11 +317,12 @@ The hackathon MVP should demonstrate a working safety supervisor rather than att
 | Configuration and validation | Python dataclasses / Pydantic where useful |
 | Testing | pytest |
 | Code quality | Ruff |
-| Local persistence (future) | SQLite |
-| API layer (future) | FastAPI |
-| Dashboard (future) | React |
+| Local persistence | JSONL session logs |
+| API layer | FastAPI |
+| Dashboard | React + Vite + TypeScript |
+| Simulator | MuJoCo (Menagerie i2rt YAM) |
 
-### Initial project structure
+### Project structure
 
 ```text
 dreamguard/
@@ -330,17 +331,46 @@ dreamguard/
 │   └── dreamguard/
 │       ├── __init__.py
 │       ├── guard.py
+│       ├── config.py
+│       ├── checks.py
+│       ├── report.py
 │       ├── adapter.py
-│       └── demo.py
+│       ├── events.py
+│       ├── metrics.py
+│       ├── demo.py
+│       ├── profiles/
+│       ├── sim/
+│       └── sources/
+│
+├── backend/
+│   ├── main.py
+│   └── src/
+│       ├── api_endpoints/
+│       ├── core_specs/
+│       ├── models/
+│       ├── resources/
+│       └── utils/
+│
+├── frontend/
+│   └── src/        # React + Vite + TypeScript dashboard
 │
 ├── scripts/
-│   └── check_dream_sdk.py
+│   ├── check_dream_sdk.py
+│   └── dream1_attempt.py
 │
-├── examples/
+├── integrations/
 │   └── dream_client_loop_skeleton.py
 │
+├── fixtures/
+│   └── dream1/     # recorded real Dream-1 replies
+│
 ├── tests/
-│   └── test_guard.py
+│
+├── documentation/
+│   ├── PRD.md
+│   ├── IMPLEMENTATION_PLAN.md
+│   ├── ARCHITECTURE.md
+│   └── DEMO.md
 │
 ├── .env.example
 ├── .gitignore
@@ -400,7 +430,7 @@ Contains automated tests for the safety rules.
 
 The planned integration uses the Dream Labs Python SDK.
 
-The starter project assumes the following integration concepts and example interface:
+The integration uses the following concepts and interface:
 
 - Import the `dream` package.
 - Construct a `dream.DreamClient`.
@@ -409,14 +439,14 @@ The starter project assumes the following integration concepts and example inter
 - Retrieve an action.
 - Pass that action through DreamGuard before execution.
 
-The starter integration references the action fields:
+The integration references the action fields:
 
 - `q_r_chunk`
 - `q_l_chunk`
 
 The action representation is expected to contain joint targets and a gripper value for each row.
 
-**Integration requirement:** Confirm the exact installed SDK version, action schema, policy configuration, observation format, and simulator execution method against the current Dream Labs documentation and official Playground example. The example integration file intentionally leaves simulator-specific observation and camera mappings for this verification.
+**Integration status:** confirmed against `dreamlabs` 1.0.37. YAM chunks contain `q_r_chunk` / `q_l_chunk` with 48 rows each (six joints + one gripper per row); observations use `state.right_arm` / `state.right_gripper` / `state.left_arm` / `state.left_gripper`; cameras are 320x176 JPEGs under `video.overhead`, `video.wrist_l` and `video.wrist_r`. Real replies also carry `q_r`, `q_l` and `per_key`. Recorded replies live in `fixtures/dream1/`.
 
 DreamGuard must never assume that an action has been validated merely because the SDK returned it successfully.
 
@@ -445,7 +475,7 @@ For example, if workspace validation is required but no forward-kinematics funct
 
 ### Configuration warning
 
-Default joint bounds in the starter implementation are placeholders. They must be calibrated to the actual robot model and simulator.
+Default joint bounds in `SafetyConfig` are placeholders. They must be calibrated to the actual robot model and simulator; the `yam_sim` profile carries the real i2rt YAM ranges.
 
 ### Physical robot warning
 
@@ -459,7 +489,7 @@ Any physical deployment requires independent, appropriately certified safety sys
 
 ### MVP user experience
 
-The first version is developer-focused and command-line driven.
+The MVP is developer-focused: command-line demos plus a local web dashboard.
 
 A developer should be able to:
 
@@ -469,6 +499,7 @@ A developer should be able to:
 4. See an unsafe action blocked.
 5. Inspect the reason for the decision.
 6. Run automated tests.
+7. Watch decisions live in the dashboard.
 
 ### Example output concept
 
@@ -492,16 +523,18 @@ Findings:
 
 The actual output format depends on the implemented safety report.
 
-### Future dashboard
+### Dashboard
 
-A later version could include:
+The MVP dashboard (React + Vite + TypeScript, `frontend/`) includes:
 - Live action status.
 - Risk score visualization.
-- Safety event history.
+- Safety event history and session replay.
 - Blocked-action explanations.
+- The active safety profile (read-only).
+
+A later version could add:
 - Configuration editor.
-- Replay controls.
-- Simulator visualization.
+- 3D simulator visualization.
 
 ---
 
@@ -510,7 +543,7 @@ A later version could include:
 ### Phase 1 — Environment setup
 
 - Install Python dependencies.
-- Extract the starter project.
+- Clone the repository.
 - Create a virtual environment.
 - Run the local demo.
 - Run automated tests.
@@ -630,42 +663,22 @@ Potential improvements after the hackathon:
 - More sophisticated risk assessment.
 - Safe action correction and revalidation.
 - SQLite safety event history.
-- FastAPI service interface.
-- React monitoring dashboard.
-- Safety replay and analytics.
 - Support for additional robot models and policies.
-- Configurable safety profiles.
 - Human approval for high-risk actions.
 
 ---
 
 # 17. Installation and Setup Guide — Windows
 
-This section assumes Windows, Python 3.12, a Dream Labs account, and an API key.
+This section assumes Windows, Python 3.12, Node.js 22, Git, and — only for live Dream-1 calls — a Dream Labs account and API key.
 
-The local safety demo and tests can run without an API key. The key is only needed for the relevant Dream Labs integration checks and API usage.
+The simulator, backend, dashboard, demos and tests all run without an API key. The key is only needed for paid Dream-1 inference calls.
 
-## Step 1 — Download the starter project
-
-Download the DreamGuard starter ZIP supplied with the project.
-
-Extract it into:
-
-```text
-C:\dev
-```
-
-For example, if the ZIP is in Downloads, open PowerShell and run:
+## Step 1 — Clone the repository
 
 ```powershell
-New-Item -ItemType Directory -Force C:\dev
-Expand-Archive "$HOME\Downloads\dreamguard_starter.zip" -DestinationPath C:\dev
-```
-
-Then navigate into the project:
-
-```powershell
-cd C:\dev\dreamguard
+git clone https://github.com/Rouxxel/dreamguard.git
+cd dreamguard
 ```
 
 Confirm that the project files are present:
@@ -674,7 +687,7 @@ Confirm that the project files are present:
 Get-ChildItem
 ```
 
-You should see `src`, `scripts`, `examples`, `tests`, `pyproject.toml`, and `README.md`.
+You should see `src`, `backend`, `frontend`, `scripts`, `integrations`, `tests`, `documentation`, `fixtures`, `pyproject.toml`, and `README.md`.
 
 ## Step 2 — Verify Python
 
@@ -719,13 +732,21 @@ Upgrade pip:
 python -m pip install --upgrade pip
 ```
 
-Install DreamGuard and its development dependencies:
+Install DreamGuard, the simulator dependencies, and the backend requirements:
 
 ```powershell
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,sim]" -r backend/requirements.txt
 ```
 
-This installs the project in editable mode, along with its declared dependencies and testing tools.
+This installs the project in editable mode, the MuJoCo simulator extra, the FastAPI backend dependencies, and the testing tools.
+
+For the dashboard, install the frontend dependencies:
+
+```powershell
+cd frontend
+npm install
+cd ..
+```
 
 If installation fails, save the complete error output before changing dependency versions.
 
@@ -741,6 +762,12 @@ This exercises the local safety engine using synthetic actions.
 
 The expected behavior is that a valid action is approved and an unsafe action is blocked with a reason.
 
+For the full loop — scripted motion in the MuJoCo simulator followed by every injectable fault, each blocked by exactly one check:
+
+```powershell
+python -m dreamguard.sim.demo
+```
+
 This step does not require a live Dream-1 connection.
 
 ## Step 6 — Run automated tests
@@ -751,20 +778,12 @@ Run:
 python -m pytest -q
 ```
 
-The starter project contains seven tests covering:
+The suite covers the safety checks (schema, finiteness, joint limits, steps, velocity, gripper, workspace, separation), the fail-closed controller (blocked actions never reach `play()`), the simulator and forward kinematics, event recording and replay, the recorded Dream-1 fixtures, and the backend API. A network guard fails any test that tries to reach a non-local address.
 
-1. Safe action approval.
-2. Missing required arm action data.
-3. Excessive joint movement.
-4. Joint-limit violation.
-5. Invalid gripper range.
-6. NaN input rejection.
-7. Workspace validation behavior.
+Expected result: all tests pass (200+ tests; the count grows with the suite).
 
-Expected result:
-
-```text
-7 passed
+```powershell
+cd frontend; npm test; cd ..     # dashboard component tests
 ```
 
 The exact test output may differ slightly by pytest version.
@@ -802,7 +821,9 @@ Run:
 python scripts/check_dream_sdk.py
 ```
 
-This checks the SDK import and the local API-key configuration. It is not a full simulator integration test.
+This checks the SDK import and the local API-key configuration. It is not a full simulator integration test and makes no inference call.
+
+For live YAM runs the full `dreamlabs` package is required (the YAM config needs its IK module): `python -m pip install "dreamguard[live]"` or `pip install dreamlabs==1.0.37`.
 
 If the check fails, record the exact error. Do not assume that a successful package installation proves the Playground workflow is configured correctly.
 
@@ -811,20 +832,19 @@ If the check fails, record the exact error. Do not assume that a successful pack
 Open:
 
 ```text
-examples/dream_client_loop_skeleton.py
+integrations/dream_client_loop_skeleton.py
 ```
 
-Review the example and compare it with the current official Dream Labs SDK and Playground example.
+Review the skeleton and compare it with the current official Dream Labs SDK and Playground example.
 
-Confirm:
+Confirmed against the installed SDK (`dreamlabs` 1.0.37):
 
-- How the Dream-1 client is initialized.
-- How the policy is created.
-- How observations and camera frames are supplied.
-- The actual action schema.
-- How actions are executed in the simulator.
-
-The starter example includes the intended guarded-action workflow, but the simulator-specific observation and camera mappings must be completed using the official interface.
+- `dream.DreamClient()` constructs locally; `policy(config)` performs one `GET /v1/models` lookup.
+- `set_observation(frames, observation)` is local validation and window handling.
+- `get_action()` is the paid inference call; always run it with the paid-call budget in `src/dreamguard/sources/dream1.py`.
+- Live SDK recording is disabled (`_record: False`); DreamGuard refuses configs without it.
+- The action schema is `q_r_chunk` / `q_l_chunk`, 48 rows per arm, six joints + one gripper per row.
+- Actions execute through `SimRobot.play()` — only via `GuardedController`.
 
 The key rule is:
 
@@ -841,44 +861,27 @@ DreamGuard validation
 
 Do not connect the action directly to the execution method before it passes the required safety checks.
 
-## Step 10 — Create the GitHub repository
+## Step 10 — Run the backend and dashboard
 
-Go to:
+The repository already exists at `https://github.com/Rouxxel/dreamguard`; teammates get access through its Settings and Collaborators section.
 
-https://github.com/new
-
-Create a repository with:
-
-- **Repository name:** `dreamguard`
-- **Description:** Intelligent safety supervisor for Dream-1
-- **Visibility:** Private initially, unless the team decides otherwise.
-- **Initialize with README:** No, because the starter project already contains one.
-
-From the project directory, run:
+Start the FastAPI backend:
 
 ```powershell
-git init
-git add .
-git status
+cd backend
+python main.py
 ```
 
-Review the files listed by `git status`. Make sure `.env` is not included.
+Open `http://127.0.0.1:8000/docs` for the API, or `http://127.0.0.1:8000/dashboard/` for the production dashboard build (`cd frontend; npm run build` first).
 
-Commit the project:
+For frontend development, run the Vite dev server in a second terminal:
 
 ```powershell
-git commit -m "Initial DreamGuard safety middleware"
-git branch -M main
+cd frontend
+npm run dev     # http://localhost:5173, proxies /api and /ws to the backend
 ```
 
-Connect your repository, replacing the placeholder with your actual GitHub username:
-
-```powershell
-git remote add origin https://github.com/YOUR-USERNAME/dreamguard.git
-git push -u origin main
-```
-
-Invite teammates through the repository's Settings and Collaborators section.
+Before committing, run `git status` and make sure `.env` is not included.
 
 ---
 
@@ -886,20 +889,20 @@ Invite teammates through the repository's Settings and Collaborators section.
 
 DreamGuard's hackathon MVP is complete when all the following are true:
 
-- [ ] The Windows development environment is installed.
-- [ ] The project dependencies install successfully.
-- [ ] The local demo runs.
-- [ ] All seven starter tests pass.
-- [ ] The Dream Labs SDK is verified.
-- [ ] The real Dream-1 action schema is confirmed.
-- [ ] The Dream-1 integration intercepts actions before execution.
-- [ ] Safe actions are approved.
-- [ ] Unsafe actions are blocked.
-- [ ] Blocked actions cannot reach the simulator execution layer.
-- [ ] The demo clearly explains each safety decision.
-- [ ] The README contains installation and usage instructions.
-- [ ] The GitHub repository is ready for team collaboration.
-- [ ] Safety limitations are clearly documented.
+- [x] The Windows development environment is installed.
+- [x] The project dependencies install successfully.
+- [x] The local demo runs.
+- [x] The automated test suite passes (228 Python + 24 frontend tests).
+- [x] The Dream Labs SDK is verified.
+- [x] The real Dream-1 action schema is confirmed (recorded replies in `fixtures/dream1/`).
+- [x] The Dream-1 integration intercepts actions before execution.
+- [x] Safe actions are approved.
+- [x] Unsafe actions are blocked (9 real joint-limit violations blocked in the final live run).
+- [x] Blocked actions cannot reach the simulator execution layer.
+- [x] The demo clearly explains each safety decision.
+- [x] The README contains installation and usage instructions.
+- [x] The GitHub repository is ready for team collaboration.
+- [x] Safety limitations are clearly documented.
 
 ---
 

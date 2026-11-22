@@ -487,9 +487,23 @@ dreamguard/
 `GET /v1/models` in the Level 2 preflight. All replies are recorded and replay for free.
 Tests: 228 Python + 24 frontend passing.
 
-### Phase 8 — Documentation and submission
+### Phase 8 — Documentation and submission — **FINISHED**
 
-- [ ] README (core, backend, frontend, safety limitations)
-- [ ] Architecture diagram
-- [ ] Update PRD setup section (clone instead of ZIP)
-- [ ] Demo video / screenshots
+- [x] README (core, backend, frontend, safety limitations)
+- [x] Architecture diagram
+- [x] Update PRD setup section (clone instead of ZIP)
+- [x] Demo video / screenshots
+
+**Phase 8 notes**
+- README rewritten for the finished system: architecture diagram (Mermaid), real clone URL,
+  repository layout, quickstart, live-call gating, verified live results, and a dedicated
+  safety-limitations section.
+- `documentation/ARCHITECTURE.md`: Mermaid + ASCII diagrams, component table, data flow,
+  and failure-handling invariants.
+- PRD updated: project structure matches the repo, setup guide clones instead of extracting
+  a ZIP, install/test steps reflect the current suite, `integrations/` path fixed, SDK
+  findings recorded, Definition of Done checked off.
+- `documentation/DEMO.md`: walkthrough (core demo, sim demo, dashboard, recorded live
+  session) plus a 90-second video storyboard. Six rendered camera screenshots under
+  `documentation/screenshots/` (no headless browser available, so dashboard captures are
+  left to the reader's own run).
